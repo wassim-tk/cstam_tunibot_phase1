@@ -10,16 +10,19 @@
 ### Option 1: Native ROS 2 / Python Run (Local Host or WSL)
 
 ```bash
-# 1. Build ROS 2 workspace
+# 1. Install Web Bridge dependencies
+pip3 install -r requirements.txt --break-system-packages
+
+# 2. Build ROS 2 workspace
 cd ros2_ws
 colcon build --symlink-install
 source install/setup.bash
 
-# 2. Run master system launch file
+# 3. Run master system launch file
 ros2 launch cstam_core cstam_system.launch.py
 
-# 3. Launch Web Dashboard & Command Center
-python cstam_web_bridge/app.py
+# 4. Launch Web Dashboard & Command Center
+python3 cstam_web_bridge/app.py
 
 # 4. Access Web Interface in Browser
 # Open: http://localhost:8000
