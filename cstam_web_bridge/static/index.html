@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSTAM-TUNIBOT | Autonomous Service Robot Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+  <!-- Top Header Navigation -->
+  <header class="navbar">
+    <div class="brand">
+      <div class="logo-icon">🤖</div>
+      <div class="brand-text">
+        <span class="brand-title">CSTAM-TUNIBOT</span>
+        <span class="brand-subtitle">Autonomous Indoor Service Robot</span>
+      </div>
+    </div>
+
+    <div class="system-status-pills">
+      <div class="status-pill" id="connection-status">
+        <span class="dot connecting"></span>
+        <span id="conn-text">Connecting...</span>
+      </div>
+      <div class="status-pill state-pill" id="robot-state-badge">
+        <span class="dot idle"></span>
+        <span id="robot-state-text">IDLE</span>
+      </div>
+      <div class="battery-widget">
+        <div class="battery-icon">
+          <div class="battery-level" id="battery-fill" style="width: 100%;"></div>
+        </div>
+        <span class="battery-pct" id="battery-pct-text">100%</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="dashboard-grid">
+
+    <!-- Left Column: User Order Portal & Queue Status -->
+    <section class="panel user-panel">
+      <div class="panel-header">
+        <h2>📦 Order Delivery Request</h2>
+        <span class="badge user-badge">User Portal</span>
+      </div>
+
+      <form id="delivery-form" class="delivery-form">
+        <div class="form-group">
+          <label for="target-select">Destination Location</label>
+          <select id="target-select" class="form-control" required>
+            <option value="Table 1">Table 1 (Dining Area)</option>
+            <option value="Table 2">Table 2 (Dining Area)</option>
+            <option value="Table 3">Table 3 (VIP Lounge)</option>
+            <option value="Kitchen/Pickup">Kitchen / Pickup Station</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="item-input">Item Description / Special Note</label>
+          <input type="text" id="item-input" class="form-control" placeholder="e.g. 2x Espresso, 1x Croissant" required>
+        </div>
+
+        <button type="submit" id="submit-btn" class="btn btn-primary btn-block">
+          <span>🚀 Request Delivery</span>
+        </button>
+      </form>
+
+      <div class="queue-container">
+        <h3>📋 Active Delivery Queue</h3>
+        <div id="queue-list" class="queue-list">
+          <div class="empty-state">No active pending tasks in queue.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Center Column: 2D Canvas Map Visualization -->
+    <section class="panel map-panel">
+      <div class="panel-header">
+        <h2>🗺️ Live 2D Indoor Navigation Map</h2>
+        <div class="map-controls">
+          <button id="reset-view-btn" class="btn btn-sm btn-outline">Reset View</button>
+        </div>
+      </div>
+
+      <div class="canvas-wrapper">
+        <canvas id="map-canvas" width="600" height="600"></canvas>
+
+        <div class="map-legend">
+          <div class="legend-item"><span class="legend-dot robot-dot"></span> Robot</div>
+          <div class="legend-item"><span class="legend-dot dock-dot"></span> Docking Station</div>
+          <div class="legend-item"><span class="legend-dot target-dot"></span> Waypoint</div>
+          <div class="legend-item"><span class="legend-dot obstacle-dot"></span> Dynamic Obstacle</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Admin Operations & Telemetry -->
+    <section class="panel admin-panel">
+      <div class="panel-header">
+        <h2>⚙️ Admin Control & Telemetry</h2>
+        <span class="badge admin-badge">Admin View</span>
+      </div>
+
+      <!-- Telemetry Cards -->
+      <div class="telemetry-cards">
+        <div class="card">
+          <div class="card-label">Robot Coordinates</div>
+          <div class="card-value mono" id="robot-pos-text">X: -4.00, Y: -4.00</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Battery Voltage</div>
+          <div class="card-value mono" id="battery-voltage-text">12.60 V</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Current Active Task</div>
+          <div class="card-value" id="current-task-text">None (Idle)</div>
+        </div>
+      </div>
+
+      <!-- Admin Actions -->
+      <div class="admin-actions">
+        <h3>🕹️ System Controls</h3>
+
+        <div class="action-buttons">
+          <button id="manual-dock-btn" class="btn btn-warning">
+            🔌 Return to Dock
+          </button>
+          
+          <button id="toggle-obstacle-btn" class="btn btn-secondary">
+            🚶 Trigger Dynamic Obstacle
+          </button>
+
+          <button id="clear-queue-btn" class="btn btn-danger">
+            🗑️ Clear Queue
+          </button>
+        </div>
+      </div>
+
+      <!-- System Log Output -->
+      <div class="log-container">
+        <h3>📜 Telemetry System Logs</h3>
+        <div id="sys-log" class="sys-log">
+          <div class="log-entry system">[SYSTEM] Dashboard initialized and ready.</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Dashboard Javascript -->
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>

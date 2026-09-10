@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  cstam_robot_system:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cstam_delivery_robot
+    ports:
+      - "8000:8000"
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    restart: unless-stopped

@@ -1,0 +1,56 @@
+# CSTAM Indoor Delivery Service Robot Waypoints Configuration
+waypoints:
+  Dock:
+    name: "Docking & Charging Station"
+    x: -4.0
+    y: -4.0
+    z: 0.0
+    qx: 0.0
+    qy: 0.0
+    qz: 0.0
+    qw: 1.0
+    type: "dock"
+
+  Kitchen/Pickup:
+    name: "Kitchen & Pickup Counter"
+    x: -3.5
+    y: 3.5
+    z: 0.0
+    qx: 0.0
+    qy: 0.0
+    qz: 0.0
+    qw: 1.0
+    type: "pickup"
+
+  Table 1:
+    name: "Dining Area - Table 1"
+    x: 3.0
+    y: 3.5
+    z: 0.0
+    qx: 0.0
+    qy: 0.0
+    qz: 0.7071
+    qw: 0.7071
+    type: "delivery"
+
+  Table 2:
+    name: "Dining Area - Table 2"
+    x: 3.5
+    y: -2.5
+    z: 0.0
+    qx: 0.0
+    qy: 0.0
+    qz: -0.7071
+    qw: 0.7071
+    type: "delivery"
+
+  Table 3:
+    name: "VIP Lounge - Table 3"
+    x: 1.0
+    y: -3.5
+    z: 0.0
+    qx: 0.0
+    qy: 0.0
+    qz: 1.0
+    qw: 0.0
+    type: "delivery"
