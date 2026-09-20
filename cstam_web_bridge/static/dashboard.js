@@ -1,6 +1,6 @@
 /**
- * CSTAM-TUNIBOT Dashboard JavaScript Controller
- * 2D Canvas Map Renderer & Real-Time Telemetry Client
+ * CSTAM Waiter Robot Dashboard Controller
+ * 2D Canvas Map Renderer & Real-Time Physical Telemetry Client
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return { x: px, y: py };
   }
 
-  // Render 2D Indoor Environment Map
+  // Render 2D Indoor Restaurant Map
   function renderMap() {
     ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
@@ -38,99 +38,183 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.stroke();
     }
 
-    // 2. Draw Walls & Layout Geometry
+    // 2. Draw Outer Walls Border
     ctx.fillStyle = '#334155';
-    // Outer Walls border
     ctx.fillRect(0, 0, CANVAS_SIZE, 12);
     ctx.fillRect(0, CANVAS_SIZE - 12, CANVAS_SIZE, 12);
     ctx.fillRect(0, 0, 12, CANVAS_SIZE);
     ctx.fillRect(CANVAS_SIZE - 12, 0, 12, CANVAS_SIZE);
 
-    // Interior Partition Walls at y=1.0 with Doorway Gap (x=0 to x=1)
-    const p1 = worldToCanvas(-3.0, 1.1);
+    // 3. Draw Interior Partition Walls with Central Doorway Gap (x=0.0 to x=1.0 at y=1.0)
+    // Left partition wall: x = -5.0 to 0.0, y = 0.9 to 1.1
+    const p1 = worldToCanvas(-5.0, 1.1);
     const p2 = worldToCanvas(0.0, 0.9);
+    ctx.fillStyle = '#475569';
     ctx.fillRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
 
+    // Right partition wall: x = 1.0 to 5.0, y = 0.9 to 1.1
     const p3 = worldToCanvas(1.0, 1.1);
-    const p4 = worldToCanvas(4.0, 0.9);
+    const p4 = worldToCanvas(5.0, 0.9);
     ctx.fillRect(p3.x, p3.y, p4.x - p3.x, p4.y - p3.y);
 
-    // 3. Draw Predefined Waypoints
+    // Doorway Guide Lines (Green dashed lines at x=0.0 and x=1.0)
+    const dLeft = worldToCanvas(0.0, 1.1);
+    const dRight = worldToCanvas(1.0, 0.9);
+    ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(dLeft.x, dLeft.y, dRight.x - dLeft.x, dRight.y - dLeft.y);
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(16, 185, 129, 0.7)';
+    ctx.font = '9px Inter';
+    ctx.fillText("DOORWAY (1.0m)", dLeft.x + 6, dLeft.y - 4);
+
+    // 4. Draw Waypoints / Dining Tables
     if (telemetryData && telemetryData.waypoints) {
       Object.entries(telemetryData.waypoints).forEach(([name, wp]) => {
         const pt = worldToCanvas(wp.x, wp.y);
 
         if (name === "Dock") {
-          // Green Docking Station Square
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+          // Green Docking Station Pad
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
           ctx.strokeStyle = '#10b981';
           ctx.lineWidth = 2;
-          ctx.fillRect(pt.x - 20, pt.y - 20, 40, 40);
-          ctx.strokeRect(pt.x - 20, pt.y - 20, 40, 40);
+          ctx.fillRect(pt.x - 22, pt.y - 22, 44, 44);
+          ctx.strokeRect(pt.x - 22, pt.y - 22, 44, 44);
 
           ctx.fillStyle = '#10b981';
-          ctx.font = '11px Inter';
-          ctx.fillText("⚡ DOCK", pt.x - 20, pt.y - 25);
+          ctx.font = 'bold 11px Inter';
+          ctx.fillText("⚡ DOCK", pt.x - 20, pt.y - 26);
+        } else if (name.includes("Kitchen")) {
+          // Kitchen Pickup Counter
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
+          ctx.strokeStyle = '#3b82f6';
+          ctx.lineWidth = 2;
+          ctx.fillRect(pt.x - 26, pt.y - 26, 52, 52);
+          ctx.strokeRect(pt.x - 26, pt.y - 26, 52, 52);
+
+          ctx.fillStyle = '#3b82f6';
+          ctx.font = 'bold 11px Inter';
+          ctx.fillText("🍳 KITCHEN", pt.x - 26, pt.y - 30);
         } else {
-          // Waypoint Circle
+          // Dining Tables
           ctx.beginPath();
-          ctx.arc(pt.x, pt.y, 14, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(245, 158, 11, 0.2)';
+          ctx.arc(pt.x, pt.y, 16, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.15)';
           ctx.fill();
           ctx.strokeStyle = '#f59e0b';
           ctx.lineWidth = 2;
           ctx.stroke();
 
           ctx.fillStyle = '#f59e0b';
-          ctx.font = '11px Inter';
-          ctx.fillText(name, pt.x - 18, pt.y - 18);
+          ctx.font = 'bold 11px Inter';
+          ctx.fillText(name, pt.x - 18, pt.y - 20);
         }
       });
     }
 
-    // 4. Draw Dynamic Obstacle if active
+    // 5. Draw Planned Doorway Navigation Path (Dashed Line)
+    if (telemetryData && telemetryData.planned_path && telemetryData.planned_path.length > 0) {
+      ctx.beginPath();
+      const startPt = worldToCanvas(telemetryData.robot_pose.x, telemetryData.robot_pose.y);
+      ctx.moveTo(startPt.x, startPt.y);
+
+      telemetryData.planned_path.forEach((wp) => {
+        const p = worldToCanvas(wp.x, wp.y);
+        ctx.lineTo(p.x, p.y);
+      });
+
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // 6. Draw Dynamic Obstacle (Walking Human with Safety Zone)
     if (telemetryData && telemetryData.dynamic_obstacle && telemetryData.dynamic_obstacle.active) {
       const obsPt = worldToCanvas(telemetryData.dynamic_obstacle.pose.x, telemetryData.dynamic_obstacle.pose.y);
+
+      // Avoidance Safety Margin Zone (1.2m radius)
+      const safetyRadius = (1.2 / 10.0) * CANVAS_SIZE;
       ctx.beginPath();
-      ctx.arc(obsPt.x, obsPt.y, 16, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+      ctx.arc(obsPt.x, obsPt.y, safetyRadius, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.08)';
       ctx.fill();
-      ctx.strokeStyle = '#ef4444';
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Pedestrian Body
+      ctx.beginPath();
+      ctx.arc(obsPt.x, obsPt.y, 14, 0, Math.PI * 2);
+      ctx.fillStyle = '#ef4444';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.stroke();
 
       ctx.fillStyle = '#ef4444';
-      ctx.font = '11px Inter';
-      ctx.fillText("🚶 Human Obstacle", obsPt.x - 30, obsPt.y - 22);
+      ctx.font = 'bold 11px Inter';
+      ctx.fillText("🚶 Pedestrian", obsPt.x - 32, obsPt.y - 18);
     }
 
-    // 5. Draw Robot Model & Trajectory
+    // 7. Draw 3D Waiter Robot (Chassis, 3-Tier Shelves, Heading, Halo)
     if (telemetryData && telemetryData.robot_pose) {
       const rPt = worldToCanvas(telemetryData.robot_pose.x, telemetryData.robot_pose.y);
-      
-      // Draw Direction Heading Line
+      const isAvoiding = telemetryData.avoidance_active || telemetryData.robot_state === "avoiding_obstacle" || telemetryData.robot_state === "yielding";
+
+      // Evasive Maneuver Alert Ring
+      if (isAvoiding) {
+        ctx.beginPath();
+        ctx.arc(rPt.x, rPt.y, 30, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+        ctx.fill();
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // Robot Base Chassis
+      ctx.save();
+      ctx.translate(rPt.x, rPt.y);
+      ctx.rotate(-telemetryData.robot_pose.yaw);
+
+      // Chassis body
       ctx.beginPath();
-      ctx.moveTo(rPt.x, rPt.y);
-      const headX = rPt.x + Math.cos(telemetryData.robot_pose.yaw) * 25;
-      const headY = rPt.y - Math.sin(telemetryData.robot_pose.yaw) * 25;
-      ctx.lineTo(headX, headY);
+      ctx.ellipse(0, 0, 18, 16, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#0f172a';
+      ctx.fill();
+      ctx.strokeStyle = isAvoiding ? '#ef4444' : '#06b6d4';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Draw 3-Tier Shelf Lines (Visualizing Waiter Tray Stack)
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1.5;
+      // Shelf 1
+      ctx.strokeRect(-8, -10, 14, 6);
+      // Shelf 2
+      ctx.strokeRect(-8, -3, 14, 6);
+      // Shelf 3
+      ctx.strokeRect(-8, 4, 14, 6);
+
+      // Heading indicator nose
+      ctx.beginPath();
+      ctx.moveTo(14, 0);
+      ctx.lineTo(24, 0);
       ctx.strokeStyle = '#06b6d4';
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      // Draw Robot Circular Body
-      ctx.beginPath();
-      ctx.arc(rPt.x, rPt.y, 18, 0, Math.PI * 2);
-      ctx.fillStyle = '#3b82f6';
-      ctx.fill();
-      ctx.strokeStyle = '#60a5fa';
-      ctx.lineWidth = 3;
-      ctx.stroke();
+      ctx.restore();
 
       // Robot Label
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 10px Inter';
-      ctx.fillText("ROBOT", rPt.x - 18, rPt.y + 4);
+      ctx.fillText(isAvoiding ? "⚠️ AVOIDING" : "WAITER BOT", rPt.x - 28, rPt.y + 26);
     }
 
     requestAnimationFrame(renderMap);
@@ -146,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ws.onopen = () => {
       document.getElementById('conn-text').textContent = 'Connected (Live)';
       document.querySelector('#connection-status .dot').className = 'dot online';
-      logSystem("WebSocket telemetry stream connected.");
+      logSystem("WebSocket telemetry stream connected.", 'info');
     };
 
     ws.onmessage = (event) => {
@@ -154,7 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
         telemetryData = JSON.parse(event.data);
         updateDashboardUI(telemetryData);
       } catch (err) {
-        console.error("Error parsing WebSocket JSON payload:", err);
+        console.error("Error parsing WebSocket payload:", err);
       }
     };
 
@@ -165,13 +249,16 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  // Update UI Elements with Live Telemetry
+  // Update UI Elements with Live Physical Telemetry
   function updateDashboardUI(data) {
-    // Battery UI
+    // 1. Physical Battery BMS Metrics
     const batPct = data.battery_percentage;
     document.getElementById('battery-pct-text').textContent = `${batPct.toFixed(1)}%`;
     document.getElementById('battery-fill').style.width = `${batPct}%`;
-    document.getElementById('battery-voltage-text').textContent = `${data.voltage} V`;
+    document.getElementById('battery-voltage-text').textContent = `${data.voltage.toFixed(2)} V`;
+    document.getElementById('battery-current-text').textContent = `${(data.current_amps || 0).toFixed(2)} A`;
+    document.getElementById('battery-power-text').textContent = `${(data.power_watts || 0).toFixed(1)} W`;
+    document.getElementById('battery-temp-text').textContent = `${(data.temperature_c || 24.5).toFixed(1)} °C`;
 
     if (batPct < 20) {
       document.getElementById('battery-fill').style.background = '#ef4444';
@@ -181,25 +268,44 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('battery-fill').style.background = '#10b981';
     }
 
-    // Robot State Badge
+    // 2. Robot State & Avoidance Badge
     const stateText = (data.robot_state || "IDLE").toUpperCase();
     document.getElementById('robot-state-text').textContent = stateText;
     const dot = document.querySelector('#robot-state-badge .dot');
     dot.className = `dot ${data.robot_state || 'idle'}`;
 
-    // Pose Card
+    const avoidBadge = document.getElementById('avoidance-badge');
+    if (data.avoidance_active || data.robot_state === "avoiding_obstacle" || data.robot_state === "yielding") {
+      avoidBadge.style.display = 'inline-block';
+      avoidBadge.textContent = data.robot_state === "yielding" ? "🛑 YIELDING TO HUMAN" : "⚠️ AVOIDING OBSTACLE";
+    } else {
+      avoidBadge.style.display = 'none';
+    }
+
+    // 3. Pose Coordinates
     const px = data.robot_pose.x.toFixed(2);
     const py = data.robot_pose.y.toFixed(2);
     document.getElementById('robot-pos-text').textContent = `X: ${px}, Y: ${py}`;
 
-    // Current Task Card
+    // 4. Current Task
     if (data.current_task) {
       document.getElementById('current-task-text').textContent = `${data.current_task.id} -> ${data.current_task.target} (${data.current_task.item})`;
     } else {
-      document.getElementById('current-task-text').textContent = 'None (Idle)';
+      document.getElementById('current-task-text').textContent = 'None (Idle at Station)';
     }
 
-    // Queue List UI
+    // 5. Waiter 3-Tier Shelves Status
+    if (data.shelves) {
+      const s3 = data.shelves.shelf_3;
+      const s2 = data.shelves.shelf_2;
+      const s1 = data.shelves.shelf_1;
+
+      document.getElementById('shelf-3-item').textContent = s3.item ? `Loaded: ${s3.item}` : 'Empty / Ready';
+      document.getElementById('shelf-2-item').textContent = s2.item ? `Loaded: ${s2.item}` : 'Empty / Ready';
+      document.getElementById('shelf-1-item').textContent = s1.item ? `Loaded: ${s1.item}` : 'Empty / Ready';
+    }
+
+    // 6. Queue List UI
     const queueList = document.getElementById('queue-list');
     if (!data.queue || data.queue.length === 0) {
       queueList.innerHTML = '<div class="empty-state">No active pending tasks in queue.</div>';
@@ -231,7 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       const data = await res.json();
       if (res.ok) {
-        logSystem(`Delivery requested: ${data.task.id} to ${target}`);
+        logSystem(`Delivery requested: ${data.task.id} to ${target} (${item})`, 'info');
         document.getElementById('item-input').value = '';
       } else {
         logSystem(`Error: ${data.detail}`, 'warn');
@@ -246,7 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch('/api/dock', { method: 'POST' });
       const data = await res.json();
-      logSystem("Admin triggered manual return to dock.", 'info');
+      logSystem("Admin commanded Waiter Bot to return to Dock.", 'info');
     } catch (err) {
       logSystem("Failed to send dock command.", 'warn');
     }
@@ -261,7 +367,7 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: dynamicObstacleActive })
       });
-      logSystem(`Dynamic obstacle toggled: ${dynamicObstacleActive ? 'ACTIVE' : 'INACTIVE'}`, 'info');
+      logSystem(`Dynamic pedestrian obstacle: ${dynamicObstacleActive ? 'ACTIVATED (Entering corridor)' : 'DEACTIVATED'}`, 'info');
     } catch (err) {
       logSystem("Failed to toggle dynamic obstacle.", 'warn');
     }
@@ -271,7 +377,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('clear-queue-btn').addEventListener('click', async () => {
     try {
       await fetch('/api/queue', { method: 'DELETE' });
-      logSystem("Task queue cleared by admin.", 'info');
+      logSystem("Task queue and shelves cleared by admin.", 'info');
     } catch (err) {
       logSystem("Failed to clear task queue.", 'warn');
     }

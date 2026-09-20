@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CSTAM-TUNIBOT | Autonomous Service Robot Command Center</title>
+  <title>CSTAM Waiter Robot | Autonomous 3-Tier Service Robot Command Center</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -16,8 +16,8 @@
     <div class="brand">
       <div class="logo-icon">🤖</div>
       <div class="brand-text">
-        <span class="brand-title">CSTAM-TUNIBOT</span>
-        <span class="brand-subtitle">Autonomous Indoor Service Robot</span>
+        <span class="brand-title">CSTAM WAITER BOT</span>
+        <span class="brand-subtitle">3-Tier Autonomous Food Delivery Robot</span>
       </div>
     </div>
 
@@ -42,35 +42,54 @@
   <!-- Main Container -->
   <main class="dashboard-grid">
 
-    <!-- Left Column: User Order Portal & Queue Status -->
+    <!-- Left Column: User Order Portal & Shelves Status -->
     <section class="panel user-panel">
       <div class="panel-header">
-        <h2>📦 Order Delivery Request</h2>
-        <span class="badge user-badge">User Portal</span>
+        <h2>🍽️ Food Order & Delivery Portal</h2>
+        <span class="badge user-badge">Guest Portal</span>
       </div>
 
       <form id="delivery-form" class="delivery-form">
         <div class="form-group">
-          <label for="target-select">Destination Location</label>
+          <label for="target-select">Dining Destination</label>
           <select id="target-select" class="form-control" required>
-            <option value="Table 1">Table 1 (Dining Area)</option>
-            <option value="Table 2">Table 2 (Dining Area)</option>
+            <option value="Table 1">Table 1 (North Dining)</option>
+            <option value="Table 2">Table 2 (South Patio)</option>
             <option value="Table 3">Table 3 (VIP Lounge)</option>
             <option value="Kitchen/Pickup">Kitchen / Pickup Station</option>
           </select>
         </div>
 
         <div class="form-group">
-          <label for="item-input">Item Description / Special Note</label>
-          <input type="text" id="item-input" class="form-control" placeholder="e.g. 2x Espresso, 1x Croissant" required>
+          <label for="item-input">Food / Beverage Item Description</label>
+          <input type="text" id="item-input" class="form-control" placeholder="e.g. Hot Espresso & Croissant" required>
         </div>
 
         <button type="submit" id="submit-btn" class="btn btn-primary btn-block">
-          <span>🚀 Request Delivery</span>
+          <span>🚀 Dispatch Delivery to Waiter Bot</span>
         </button>
       </form>
 
-      <div class="queue-container">
+      <!-- 3-Tier Food Shelves Live Status -->
+      <div class="shelves-container" style="margin-top: 20px;">
+        <h3>🍽️ Waiter Robot Serving Shelves</h3>
+        <div class="shelves-list" id="shelves-display" style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+          <div class="shelf-card" id="shelf-3-card" style="padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 8px;">
+            <div style="font-weight: 600; font-size: 12px; color: var(--accent-cyan);">☕ Tier 3 (Upper Tray): Drinks & Cups</div>
+            <div id="shelf-3-item" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Empty</div>
+          </div>
+          <div class="shelf-card" id="shelf-2-card" style="padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 8px;">
+            <div style="font-weight: 600; font-size: 12px; color: var(--accent-amber);">🍲 Tier 2 (Middle Tray): Hot Dishes</div>
+            <div id="shelf-2-item" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Empty</div>
+          </div>
+          <div class="shelf-card" id="shelf-1-card" style="padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 8px;">
+            <div style="font-weight: 600; font-size: 12px; color: var(--accent-blue);">🥗 Tier 1 (Lower Tray): Heavy Trays</div>
+            <div id="shelf-1-item" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Empty</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="queue-container" style="margin-top: 20px;">
         <h3>📋 Active Delivery Queue</h3>
         <div id="queue-list" class="queue-list">
           <div class="empty-state">No active pending tasks in queue.</div>
@@ -81,8 +100,9 @@
     <!-- Center Column: 2D Canvas Map Visualization -->
     <section class="panel map-panel">
       <div class="panel-header">
-        <h2>🗺️ Live 2D Indoor Navigation Map</h2>
+        <h2>🗺️ 2D Navigation Map (Doorway & Obstacle Avoidance)</h2>
         <div class="map-controls">
+          <span id="avoidance-badge" style="display: none; padding: 4px 10px; background: #ef4444; border-radius: 12px; font-size: 11px; font-weight: 600; color: white;">⚠️ AVOIDING OBSTACLE</span>
           <button id="reset-view-btn" class="btn btn-sm btn-outline">Reset View</button>
         </div>
       </div>
@@ -91,34 +111,49 @@
         <canvas id="map-canvas" width="600" height="600"></canvas>
 
         <div class="map-legend">
-          <div class="legend-item"><span class="legend-dot robot-dot"></span> Robot</div>
-          <div class="legend-item"><span class="legend-dot dock-dot"></span> Docking Station</div>
-          <div class="legend-item"><span class="legend-dot target-dot"></span> Waypoint</div>
-          <div class="legend-item"><span class="legend-dot obstacle-dot"></span> Dynamic Obstacle</div>
+          <div class="legend-item"><span class="legend-dot robot-dot"></span> Waiter Bot</div>
+          <div class="legend-item"><span class="legend-dot dock-dot"></span> Dock Station</div>
+          <div class="legend-item"><span class="legend-dot target-dot"></span> Table / Pickup</div>
+          <div class="legend-item"><span class="legend-dot obstacle-dot"></span> Walking Human</div>
         </div>
       </div>
     </section>
 
-    <!-- Right Column: Admin Operations & Telemetry -->
+    <!-- Right Column: Admin Operations & Physical Battery Telemetry -->
     <section class="panel admin-panel">
       <div class="panel-header">
-        <h2>⚙️ Admin Control & Telemetry</h2>
-        <span class="badge admin-badge">Admin View</span>
+        <h2>⚡ Physical Battery & System Telemetry</h2>
+        <span class="badge admin-badge">24V Li-ion BMS</span>
       </div>
 
-      <!-- Telemetry Cards -->
-      <div class="telemetry-cards">
+      <!-- Real Battery & Electrical Telemetry Cards -->
+      <div class="telemetry-cards" style="grid-template-columns: 1fr 1fr; gap: 10px;">
         <div class="card">
+          <div class="card-label">Terminal Voltage</div>
+          <div class="card-value mono" id="battery-voltage-text" style="color: var(--accent-cyan);">29.40 V</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Current Draw / Charge</div>
+          <div class="card-value mono" id="battery-current-text" style="color: var(--accent-amber);">0.00 A</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Instantaneous Power</div>
+          <div class="card-value mono" id="battery-power-text">35.0 W</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Cell Temperature</div>
+          <div class="card-value mono" id="battery-temp-text">24.5 °C</div>
+        </div>
+
+        <div class="card" style="grid-column: span 2;">
           <div class="card-label">Robot Coordinates</div>
           <div class="card-value mono" id="robot-pos-text">X: -4.00, Y: -4.00</div>
         </div>
 
-        <div class="card">
-          <div class="card-label">Battery Voltage</div>
-          <div class="card-value mono" id="battery-voltage-text">12.60 V</div>
-        </div>
-
-        <div class="card">
+        <div class="card" style="grid-column: span 2;">
           <div class="card-label">Current Active Task</div>
           <div class="card-value" id="current-task-text">None (Idle)</div>
         </div>
@@ -147,7 +182,7 @@
       <div class="log-container">
         <h3>📜 Telemetry System Logs</h3>
         <div id="sys-log" class="sys-log">
-          <div class="log-entry system">[SYSTEM] Dashboard initialized and ready.</div>
+          <div class="log-entry system">[SYSTEM] CSTAM Waiter Robot BMS and Navigation initialized.</div>
         </div>
       </div>
     </section>

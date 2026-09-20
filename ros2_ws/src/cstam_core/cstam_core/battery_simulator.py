@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+CSTAM Physically-Accurate Lithium-Ion Battery Simulator Node
+Models a 24V 20Ah (480Wh, 7S NMC) mobile robot battery pack:
+- Non-linear Open-Circuit Voltage (OCV) discharge curve
+- Dynamic load current based on subsystem power (idle electronics vs. drive motors)
+- Internal cell resistance (R_int) causing dynamic voltage sag under acceleration
+- Multi-stage Constant-Current / Constant-Voltage (CC-CV) dock charging profile
+- Thermal dissipation and Joule heating (I^2 * R)
+"""
+
 import time
 import math
 
@@ -14,27 +24,145 @@ except ImportError:
 
 class BatterySimulator:
     """
-    Core Battery Simulation Logic.
-    Calculates battery drain based on state/distance and charge rate when docked.
+    Physical Li-ion Battery Simulation Model.
+    7S (24V nominal, 29.4V peak, 21.0V cutoff), 20.0 Ah (480 Wh).
     """
-    def __init__(self, initial_percentage=100.0, drain_rate_idle=0.02, drain_rate_nav=0.15, charge_rate=2.0):
-        self.percentage = float(initial_percentage)
-        self.drain_rate_idle = float(drain_rate_idle)  # % per sec
-        self.drain_rate_nav = float(drain_rate_nav)    # % per sec
-        self.charge_rate = float(charge_rate)          # % per sec
+
+    def __init__(
+        self,
+        initial_percentage=100.0,
+        drain_rate_idle=0.02,
+        drain_rate_nav=0.15,
+        charge_rate=2.0,
+        time_scale=15.0  # Accelerated time scale for interactive simulation
+    ):
+        self.capacity = 20.0  # Nominal capacity in Ah (Amp-hours)
+        self.percentage = float(max(0.0, min(100.0, initial_percentage)))
+        self.soc = self.percentage / 100.0  # State of Charge [0.0 - 1.0]
+
+        # Internal cell and pack resistance in Ohms (45 mOhm)
+        self.r_internal = 0.045
+
+        # Subsystem Power Consumption (Watts)
+        self.p_base_electronics = 35.0   # LiDAR, Jetson/NUC, cameras, displays
+        self.p_drive_cruise = 95.0       # Motors cruising at nominal speed
+        self.p_drive_accel = 160.0       # Motors accelerating or maneuvering
+
+        # Dock Charger Parameters (24V / 8A dock charger)
+        self.charger_max_current = 8.0   # Amps in CC phase
+        self.charger_max_voltage = 29.4  # Volts peak (4.2V/cell * 7 cells)
+
+        # Operational States
         self.is_docked = False
         self.is_moving = False
-        self.voltage = 12.0
-        self.capacity = 10.0  # Ah
+        self.is_accelerating = False
+
+        # Live Electrical Measurements
+        self.current = 0.0      # Amperes (+ discharging, - charging)
+        self.voltage = 29.4     # Terminal voltage under load (V)
+        self.ocv = 29.4         # Open-circuit voltage (V)
+        self.power = 0.0        # Power in Watts (P = V * I)
+        self.temperature = 24.5 # Pack temperature in Celsius
+
+        # Time Acceleration Factor (1.0 = real-time, 15.0 = demo mode)
+        self.time_scale = float(time_scale)
+
+        # Legacy parameters compatibility
+        self.drain_rate_idle = float(drain_rate_idle)
+        self.drain_rate_nav = float(drain_rate_nav)
+        self.charge_rate = float(charge_rate)
+
+        # Initialize voltage based on starting SOC
+        self._calculate_ocv()
+        self.voltage = self.ocv
+
+    def _calculate_ocv(self):
+        """
+        Calculates Open-Circuit Voltage (OCV) using an empirical
+        7S Li-ion (NMC) non-linear discharge curve.
+        """
+        s = max(0.001, min(0.999, self.soc))
+
+        # Piecewise physical approximation of 7S lithium-ion OCV:
+        # Full charge: 29.4V (4.2V/cell)
+        # Flat operational plateau: 25.2V - 27.5V (3.6V - 3.9V/cell)
+        # Discharge knee: 24.5V (3.5V/cell) at ~20% SOC
+        # Cutoff: 21.0V (3.0V/cell) at ~0% SOC
+        if s >= 0.85:
+            # Upper curve: 28.0V -> 29.4V
+            v_oc = 28.0 + (s - 0.85) / 0.15 * 1.4
+        elif s >= 0.20:
+            # Nominal plateau: 24.8V -> 28.0V
+            v_oc = 24.8 + (s - 0.20) / 0.65 * 3.2
+        elif s >= 0.08:
+            # Knee region (BMS low battery trigger zone): 23.0V -> 24.8V
+            v_oc = 23.0 + (s - 0.08) / 0.12 * 1.8
+        else:
+            # Cut-off cliff: 21.0V -> 23.0V
+            v_oc = 21.0 + (s / 0.08) * 2.0
+
+        self.ocv = round(v_oc, 3)
+        return self.ocv
 
     def update(self, dt=1.0):
-        if self.is_docked:
-            self.percentage = min(100.0, self.percentage + self.charge_rate * dt)
-        else:
-            rate = self.drain_rate_nav if self.is_moving else self.drain_rate_idle
-            self.percentage = max(0.0, self.percentage - rate * dt)
+        """
+        Updates battery state for a time step dt (seconds).
+        Integrates current using Coulomb counting and applies internal resistance.
+        """
+        effective_dt = dt * self.time_scale
 
-        self.voltage = 10.0 + (self.percentage / 100.0) * 2.6
+        if self.is_docked:
+            # --- CC-CV DOCK CHARGING MODEL ---
+            if self.soc < 0.85:
+                # Constant Current (CC) phase: 8.0A
+                charge_current = self.charger_max_current
+            else:
+                # Constant Voltage (CV) phase: current tapers exponentially
+                taper_ratio = max(0.08, (1.0 - self.soc) / 0.15)
+                charge_current = self.charger_max_current * taper_ratio
+
+            self.current = -charge_current
+            self.power = abs(self.current) * self.voltage
+
+            # Coulomb integration (charging adds Ah)
+            delta_ah = (charge_current * effective_dt) / 3600.0
+            new_soc = min(1.0, self.soc + delta_ah / self.capacity)
+            self.soc = new_soc
+            self.percentage = round(self.soc * 100.0, 2)
+
+            self._calculate_ocv()
+            # Terminal voltage rises during charging due to R_internal
+            self.voltage = round(min(self.charger_max_voltage, self.ocv + charge_current * self.r_internal), 2)
+
+        else:
+            # --- DYNAMIC DISCHARGE & LOAD MODEL ---
+            if self.is_moving:
+                p_load = self.p_base_electronics + (self.p_drive_accel if self.is_accelerating else self.p_drive_cruise)
+            else:
+                p_load = self.p_base_electronics
+
+            # Compute discharge current from power: I = P / V
+            est_v = max(20.0, self.ocv)
+            discharge_current = p_load / est_v
+            self.current = round(discharge_current, 2)
+            self.power = round(p_load, 1)
+
+            # Coulomb integration (discharging removes Ah)
+            delta_ah = (discharge_current * effective_dt) / 3600.0
+            new_soc = max(0.0, self.soc - delta_ah / self.capacity)
+            self.soc = new_soc
+            self.percentage = round(self.soc * 100.0, 2)
+
+            self._calculate_ocv()
+            # Terminal voltage drops under load (VOLTAGE SAG)
+            voltage_sag = discharge_current * self.r_internal
+            self.voltage = round(max(20.0, self.ocv - voltage_sag), 2)
+
+        # Thermal model: Joule heating (I^2 * R) with ambient cooling
+        joule_heat = (self.current ** 2) * self.r_internal
+        cooling = 0.05 * (self.temperature - 24.0)
+        self.temperature = round(self.temperature + (joule_heat * 0.01 - cooling) * dt, 1)
+
         return self.percentage
 
 
@@ -42,47 +170,50 @@ if HAVE_ROS2:
     class BatterySimulatorNode(Node):
         def __init__(self):
             super().__init__('battery_simulator')
-            
+
             self.declare_parameter('initial_battery', 100.0)
-            self.declare_parameter('drain_rate_idle', 0.05)
-            self.declare_parameter('drain_rate_nav', 0.20)
-            self.declare_parameter('charge_rate', 2.5)
+            self.declare_parameter('time_scale', 12.0)
 
             init_bat = self.get_parameter('initial_battery').value
-            d_idle = self.get_parameter('drain_rate_idle').value
-            d_nav = self.get_parameter('drain_rate_nav').value
-            chg = self.get_parameter('charge_rate').value
+            t_scale = self.get_parameter('time_scale').value
 
-            self.sim = BatterySimulator(init_bat, d_idle, d_nav, chg)
+            self.sim = BatterySimulator(initial_percentage=init_bat, time_scale=t_scale)
 
             self.publisher_ = self.create_publisher(BatteryState, '/battery_state', 10)
-            
+            self.telemetry_pub = self.create_publisher(String, '/battery_telemetry_detailed', 10)
+
             # Subscriptions
             self.create_subscription(String, '/robot_system_state', self.system_state_cb, 10)
             self.create_subscription(Bool, '/dock_state', self.dock_state_cb, 10)
 
             self.timer = self.create_timer(1.0, self.timer_callback)
-            self.get_logger().info("Battery Simulator Node initialized successfully.")
+            self.get_logger().info("Physical 24V Li-ion Battery Simulator Node initialized.")
 
         def system_state_cb(self, msg: String):
             state = msg.data.lower()
-            self.sim.is_moving = 'navigating' in state or 'en_route' in state
-            if 'docked' in state or 'charging' in state:
+            self.sim.is_moving = any(k in state for k in ['navigating', 'en_route', 'docking', 'avoiding'])
+            if any(k in state for k in ['docked', 'charging']):
                 self.sim.is_docked = True
+            elif self.sim.is_moving:
+                self.sim.is_docked = False
 
         def dock_state_cb(self, msg: Bool):
             self.sim.is_docked = msg.data
 
         def timer_callback(self):
             current_pct = self.sim.update(dt=1.0)
-            
+
+            # Standard ROS 2 BatteryState message
             msg = BatteryState()
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.header.frame_id = 'base_link'
-            msg.percentage = current_pct / 100.0  # Normalized [0.0 - 1.0] in ROS 2 standard
+            msg.percentage = current_pct / 100.0  # Normalized [0.0 - 1.0]
             msg.voltage = self.sim.voltage
+            msg.current = -self.sim.current if self.sim.is_docked else self.sim.current
+            msg.charge = (current_pct / 100.0) * self.sim.capacity
             msg.capacity = self.sim.capacity
-            msg.design_capacity = 10.0
+            msg.design_capacity = 20.0
+            msg.temperature = self.sim.temperature
 
             if self.sim.is_docked:
                 msg.power_supply_status = BatteryState.POWER_SUPPLY_STATUS_CHARGING
@@ -96,7 +227,19 @@ if HAVE_ROS2:
             msg.present = True
 
             self.publisher_.publish(msg)
-            self.get_logger().debug(f"Battery percentage: {current_pct:.1f}%, Docked: {self.sim.is_docked}")
+
+            # Rich Telemetry JSON
+            telemetry = {
+                "percentage": round(current_pct, 1),
+                "voltage": self.sim.voltage,
+                "current_amps": abs(self.sim.current),
+                "power_watts": self.sim.power,
+                "temperature_c": self.sim.temperature,
+                "status": "charging" if self.sim.is_docked else ("discharging_nav" if self.sim.is_moving else "idle_standby")
+            }
+            str_msg = String()
+            str_msg.data = json.dumps(telemetry)
+            self.telemetry_pub.publish(str_msg)
 
 
 def main(args=None):
@@ -110,17 +253,17 @@ def main(args=None):
         node.destroy_node()
         rclpy.shutdown()
     else:
-        print("Running BatterySimulator standalone test mode:")
-        sim = BatterySimulator(initial_percentage=100.0, drain_rate_nav=2.0, charge_rate=5.0)
+        print("Running Physical BatterySimulator standalone test mode:")
+        sim = BatterySimulator(initial_percentage=100.0, time_scale=60.0)
         sim.is_moving = True
-        print(f"Initial: {sim.percentage:.1f}%")
+        print(f"Initial: {sim.percentage:.1f}%, OCV: {sim.ocv}V, Terminal: {sim.voltage}V")
         for i in range(5):
             sim.update(1.0)
-            print(f"Step {i+1} (Navigating): {sim.percentage:.1f}%")
+            print(f"Step {i+1} (Cruising): SOC={sim.percentage:.1f}%, V={sim.voltage:.2f}V, I={sim.current:.2f}A, P={sim.power:.1f}W")
         sim.is_docked = True
         for i in range(5):
             sim.update(1.0)
-            print(f"Step {i+6} (Charging): {sim.percentage:.1f}%")
+            print(f"Step {i+6} (CC Charging): SOC={sim.percentage:.1f}%, V={sim.voltage:.2f}V, I={sim.current:.2f}A")
 
 
 if __name__ == '__main__':

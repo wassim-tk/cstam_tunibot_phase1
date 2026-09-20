@@ -11,6 +11,15 @@ __pycache__/
 *.egg-info/
 
 # ROS 2 colcon build artifacts
+build/
+install/
+log/
 ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
+
+# Virtual environments
+venv/
+.venv/
+docs/venv/
+
