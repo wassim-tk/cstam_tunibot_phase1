@@ -1,16 +1,70 @@
 <?xml version="1.0" ?>
-<sdf version="1.6">
+<sdf version="1.8">
   <world name="cstam_world">
-    <!-- Ground Plane & Lighting -->
-    <include>
-      <uri>model://sun</uri>
-    </include>
-    <include>
-      <uri>model://ground_plane</uri>
-    </include>
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin
+      filename="gz-sim-physics-system"
+      name="gz::sim::systems::Physics">
+    </plugin>
+    <plugin
+      filename="gz-sim-user-commands-system"
+      name="gz::sim::systems::UserCommands">
+    </plugin>
+    <plugin
+      filename="gz-sim-scene-broadcaster-system"
+      name="gz::sim::systems::SceneBroadcaster">
+    </plugin>
+    <plugin
+      filename="gz-sim-sensors-system"
+      name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.8 0.8 0.8 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
 
     <!-- Outer Perimeter Walls (10m x 10m area) -->
-    <!-- North Wall -->
     <model name="wall_north">
       <static>true</static>
       <pose>0 5 1 0 0 0</pose>
@@ -20,12 +74,14 @@
         </collision>
         <visual name="visual">
           <geometry><box><size>10.2 0.2 2.0</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Grey</name></script></material>
+          <material>
+            <ambient>0.5 0.5 0.5 1.0</ambient>
+            <diffuse>0.5 0.5 0.5 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
 
-    <!-- South Wall -->
     <model name="wall_south">
       <static>true</static>
       <pose>0 -5 1 0 0 0</pose>
@@ -35,12 +91,14 @@
         </collision>
         <visual name="visual">
           <geometry><box><size>10.2 0.2 2.0</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Grey</name></script></material>
+          <material>
+            <ambient>0.5 0.5 0.5 1.0</ambient>
+            <diffuse>0.5 0.5 0.5 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
 
-    <!-- West Wall -->
     <model name="wall_west">
       <static>true</static>
       <pose>-5 0 1 0 0 0</pose>
@@ -50,12 +108,14 @@
         </collision>
         <visual name="visual">
           <geometry><box><size>0.2 10.2 2.0</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Grey</name></script></material>
+          <material>
+            <ambient>0.5 0.5 0.5 1.0</ambient>
+            <diffuse>0.5 0.5 0.5 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
 
-    <!-- East Wall -->
     <model name="wall_east">
       <static>true</static>
       <pose>5 0 1 0 0 0</pose>
@@ -65,7 +125,10 @@
         </collision>
         <visual name="visual">
           <geometry><box><size>0.2 10.2 2.0</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Grey</name></script></material>
+          <material>
+            <ambient>0.5 0.5 0.5 1.0</ambient>
+            <diffuse>0.5 0.5 0.5 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
@@ -80,7 +143,10 @@
         </collision>
         <visual name="visual">
           <geometry><box><size>3.0 0.2 2.0</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Wood</name></script></material>
+          <material>
+            <ambient>0.6 0.4 0.2 1.0</ambient>
+            <diffuse>0.6 0.4 0.2 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
@@ -94,11 +160,13 @@
         </collision>
         <visual name="visual">
           <geometry><box><size>3.0 0.2 2.0</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Wood</name></script></material>
+          <material>
+            <ambient>0.6 0.4 0.2 1.0</ambient>
+            <diffuse>0.6 0.4 0.2 1.0</diffuse>
+          </material>
         </visual>
       </link>
     </model>
-    <!-- Doorway gap is between x=0.0 and x=1.0 at y=1 (width 1.0m, tests narrow passage) -->
 
     <!-- Furniture / Landmarks -->
     <!-- Docking Station (Origin: x=-4.0, y=-4.0) -->
@@ -108,7 +176,10 @@
       <link name="link">
         <visual name="visual">
           <geometry><box><size>0.8 0.8 0.4</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Green</name></script></material>
+          <material>
+            <ambient>0.1 0.7 0.2 1.0</ambient>
+            <diffuse>0.1 0.7 0.2 1.0</diffuse>
+          </material>
         </visual>
         <collision name="collision">
           <geometry><box><size>0.8 0.8 0.4</size></box></geometry>
@@ -123,7 +194,10 @@
       <link name="link">
         <visual name="visual">
           <geometry><box><size>1.2 1.5 0.8</size></box></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Blue</name></script></material>
+          <material>
+            <ambient>0.1 0.4 0.8 1.0</ambient>
+            <diffuse>0.1 0.4 0.8 1.0</diffuse>
+          </material>
         </visual>
         <collision name="collision">
           <geometry><box><size>1.2 1.5 0.8</size></box></geometry>
@@ -138,7 +212,10 @@
       <link name="link">
         <visual name="visual">
           <geometry><cylinder><radius>0.6</radius><length>0.8</length></cylinder></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Red</name></script></material>
+          <material>
+            <ambient>0.8 0.1 0.1 1.0</ambient>
+            <diffuse>0.8 0.1 0.1 1.0</diffuse>
+          </material>
         </visual>
         <collision name="collision">
           <geometry><cylinder><radius>0.6</radius><length>0.8</length></cylinder></geometry>
@@ -153,7 +230,10 @@
       <link name="link">
         <visual name="visual">
           <geometry><cylinder><radius>0.6</radius><length>0.8</length></cylinder></geometry>
-          <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Yellow</name></script></material>
+          <material>
+            <ambient>0.9 0.8 0.1 1.0</ambient>
+            <diffuse>0.9 0.8 0.1 1.0</diffuse>
+          </material>
         </visual>
         <collision name="collision">
           <geometry><cylinder><radius>0.6</radius><length>0.8</length></cylinder></geometry>
@@ -161,38 +241,22 @@
       </link>
     </model>
 
-    <!-- Dynamic Obstacle Actor (Walking Human crossing central corridor) -->
-    <actor name="walking_human">
-      <pose>0 -1 0 0 0 0</pose>
-      <skin>
-        <filename>walk.dae</filename>
-        <scale>1.0</scale>
-      </skin>
-      <animation name="walking">
-        <filename>walk.dae</filename>
-        <scale>1.000000</scale>
-        <interpolate_x>true</interpolate_x>
-      </animation>
-      <script>
-        <loop>true</loop>
-        <delay_start>0.000000</delay_start>
-        <auto_start>true</auto_start>
-        <trajectory id="0" type="walking">
-          <waypoint>
-            <time>0.0</time>
-            <pose>-2 -1 0 0 0 0</pose>
-          </waypoint>
-          <waypoint>
-            <time>5.0</time>
-            <pose>2 -1 0 0 0 3.14159</pose>
-          </waypoint>
-          <waypoint>
-            <time>10.0</time>
-            <pose>-2 -1 0 0 0 0</pose>
-          </waypoint>
-        </trajectory>
-      </script>
-    </actor>
+    <!-- Dynamic Obstacle Model (Moving Obstacle crossing central corridor) -->
+    <model name="dynamic_obstacle">
+      <pose>0 -1 0.5 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><cylinder><radius>0.25</radius><length>1.0</length></cylinder></geometry>
+          <material>
+            <ambient>0.9 0.4 0.1 1.0</ambient>
+            <diffuse>0.9 0.4 0.1 1.0</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry><cylinder><radius>0.25</radius><length>1.0</length></cylinder></geometry>
+        </collision>
+      </link>
+    </model>
 
   </world>
 </sdf>

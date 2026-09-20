@@ -177,36 +177,37 @@
     <origin xyz="0 0 0.325" rpy="0 0 0"/>
   </joint>
 
-  <!-- Gazebo Differential Drive Plugin -->
+  <!-- Gazebo Sim Differential Drive Plugin -->
   <gazebo>
-    <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
-      <ros>
-        <namespace>/</namespace>
-        <remapping>cmd_vel:=cmd_vel</remapping>
-        <remapping>odom:=odom</remapping>
-      </ros>
-      <update_rate>30</update_rate>
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
       <left_joint>left_wheel_joint</left_joint>
       <right_joint>right_wheel_joint</right_joint>
       <wheel_separation>0.44</wheel_separation>
-      <wheel_diameter>0.20</wheel_diameter>
-      <max_wheel_torque>20</max_wheel_torque>
-      <max_wheel_acceleration>1.0</max_wheel_acceleration>
-      <command_topic>cmd_vel</command_topic>
-      <publish_odom>true</publish_odom>
-      <publish_odom_tf>true</publish_odom_tf>
-      <publish_wheel_tf>false</publish_wheel_tf>
-      <odometry_frame>odom</odometry_frame>
-      <robot_base_frame>base_footprint</robot_base_frame>
+      <wheel_radius>0.10</wheel_radius>
+      <max_linear_acceleration>1.0</max_linear_acceleration>
+      <max_angular_acceleration>2.0</max_angular_acceleration>
+      <topic>cmd_vel</topic>
+      <odom_topic>odom</odom_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_footprint</child_frame_id>
+      <odom_publisher_frequency>30</odom_publisher_frequency>
+      <tf_topic>/tf</tf_topic>
+    </plugin>
+    <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher">
+      <topic>joint_states</topic>
+      <joint_name>left_wheel_joint</joint_name>
+      <joint_name>right_wheel_joint</joint_name>
     </plugin>
   </gazebo>
 
-  <!-- Gazebo LiDAR Sensor Plugin -->
+  <!-- Gazebo Sim LiDAR Sensor Plugin -->
   <gazebo reference="laser_frame">
-    <sensor name="rplidar" type="ray">
+    <sensor name="lidar" type="gpu_lidar">
+      <pose>0 0 0 0 0 0</pose>
       <always_on>true</always_on>
       <visualize>true</visualize>
       <update_rate>10</update_rate>
+      <topic>scan</topic>
       <ray>
         <scan>
           <horizontal>
@@ -227,13 +228,7 @@
           <stddev>0.01</stddev>
         </noise>
       </ray>
-      <plugin name="laser_controller" filename="libgazebo_ros_ray_sensor.so">
-        <ros>
-          <argument>~/out:=scan</argument>
-        </ros>
-        <output_type>sensor_msgs/LaserScan</output_type>
-        <frame_name>laser_frame</frame_name>
-      </plugin>
+      <gz_frame_id>laser_frame</gz_frame_id>
     </sensor>
   </gazebo>
 

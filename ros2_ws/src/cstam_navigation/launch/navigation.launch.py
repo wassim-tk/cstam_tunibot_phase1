@@ -1,13 +1,22 @@
 import os
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, LogInfo
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_cstam_navigation = get_package_share_directory('cstam_navigation')
-    pkg_nav2_bringup = get_package_share_directory('nav2_bringup')
+
+    try:
+        pkg_nav2_bringup = get_package_share_directory('nav2_bringup')
+    except PackageNotFoundError:
+        return LaunchDescription([
+            LogInfo(
+                msg="[WARNING] Package 'nav2_bringup' not found. "
+                    "To enable Nav2, install it via: "
+                    "sudo apt update && sudo apt install -y ros-jazzy-navigation2 ros-jazzy-nav2-bringup"
+            )
+        ])
 
     map_yaml_file = os.path.join(pkg_cstam_navigation, 'maps', 'cstam_map.yaml')
     nav2_params_file = os.path.join(pkg_cstam_navigation, 'config', 'nav2_params.yaml')
