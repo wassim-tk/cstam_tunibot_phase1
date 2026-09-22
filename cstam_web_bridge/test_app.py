@@ -46,6 +46,12 @@ class TestCstamWebBridge(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.json()["dynamic_obstacle_active"])
 
+    def test_trigger_low_battery(self):
+        res = self.client.post("/api/battery/low")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["success"])
+        self.assertEqual(res.json()["battery_percentage"], 15.0)
+
 
 if __name__ == '__main__':
     unittest.main()

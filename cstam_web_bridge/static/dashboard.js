@@ -19,6 +19,15 @@ document.addEventListener('DOMContentLoaded', () => {
   let restaurantLayout = { walls: [], tables: [] };
   let hoveredTable = null;
 
+  // Viewport Pan, Zoom & Camera Follow State
+  let zoomLevel = 1.0;
+  let panOffsetX = 0.0;
+  let panOffsetY = 0.0;
+  let isFollowingRobot = true;
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+
   // Set high-DPI canvas
   function adjustCanvasSize() {
     canvas.width = 650;
@@ -26,17 +35,31 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   adjustCanvasSize();
 
-  // Transform World (x, y) to Canvas Pixel (px, py)
-  function worldToCanvas(x, y) {
+  // Raw World to Unscaled Canvas Pixel Transform
+  function worldToCanvasRaw(x, y) {
     const px = ((x - WORLD_MIN_X) / (WORLD_MAX_X - WORLD_MIN_X)) * canvas.width;
     const py = ((WORLD_MAX_Y - y) / (WORLD_MAX_Y - WORLD_MIN_Y)) * canvas.height;
     return { x: px, y: py };
   }
 
-  // Transform Canvas Pixel to World (x, y)
+  // Transform World (x, y) to Viewport Canvas Pixel (px, py) with Pan & Zoom
+  function worldToCanvas(x, y) {
+    const raw = worldToCanvasRaw(x, y);
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const px = cx + (raw.x - cx) * zoomLevel + panOffsetX;
+    const py = cy + (raw.y - cy) * zoomLevel + panOffsetY;
+    return { x: px, y: py };
+  }
+
+  // Transform Viewport Canvas Pixel to World (x, y)
   function canvasToWorld(px, py) {
-    const x = WORLD_MIN_X + (px / canvas.width) * (WORLD_MAX_X - WORLD_MIN_X);
-    const y = WORLD_MAX_Y - (py / canvas.height) * (WORLD_MAX_Y - WORLD_MIN_Y);
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const rawX = (px - panOffsetX - cx) / zoomLevel + cx;
+    const rawY = (py - panOffsetY - cy) / zoomLevel + cy;
+    const x = WORLD_MIN_X + (rawX / canvas.width) * (WORLD_MAX_X - WORLD_MIN_X);
+    const y = WORLD_MAX_Y - (rawY / canvas.height) * (WORLD_MAX_Y - WORLD_MIN_Y);
     return { x, y };
   }
 
@@ -53,24 +76,67 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   loadRestaurantLayout();
 
-  // Mouse hover & click table detection
+  // Interactive Mouse Wheel Zooming (Zoom towards cursor position)
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
+    const newZoom = Math.max(0.5, Math.min(4.5, zoomLevel * zoomFactor));
+
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+    panOffsetX = mouseX - (mouseX - panOffsetX) * (newZoom / zoomLevel);
+    panOffsetY = mouseY - (mouseY - panOffsetY) * (newZoom / zoomLevel);
+    zoomLevel = newZoom;
+  }, { passive: false });
+
+  // Interactive Drag-to-Pan & Table Selection Listeners
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button === 0 && !hoveredTable) {
+      isDragging = true;
+      dragStartX = e.clientX - panOffsetX;
+      dragStartY = e.clientY - panOffsetY;
+      canvas.style.cursor = 'grabbing';
+    }
+  });
+
   canvas.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      panOffsetX = e.clientX - dragStartX;
+      panOffsetY = e.clientY - dragStartY;
+      return;
+    }
+
     const rect = canvas.getBoundingClientRect();
     const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
     const my = (e.clientY - rect.top) * (canvas.height / rect.height);
     const worldPos = canvasToWorld(mx, my);
 
     hoveredTable = null;
-    for (const t of restaurantLayout.tables) {
-      const dx = worldPos.x - t.x;
-      const dy = worldPos.y - t.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < 1.3) {
-        hoveredTable = t;
-        break;
+    if (restaurantLayout.tables) {
+      for (const t of restaurantLayout.tables) {
+        const dx = worldPos.x - t.x;
+        const dy = worldPos.y - t.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 1.3) {
+          hoveredTable = t;
+          break;
+        }
       }
     }
-    canvas.style.cursor = hoveredTable ? 'pointer' : 'crosshair';
+    canvas.style.cursor = hoveredTable ? 'pointer' : (isDragging ? 'grabbing' : 'crosshair');
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      canvas.style.cursor = hoveredTable ? 'pointer' : 'crosshair';
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    isDragging = false;
   });
 
   canvas.addEventListener('click', (e) => {
@@ -78,7 +144,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const formattedName = formatTableName(hoveredTable.model);
       const targetSelect = document.getElementById('target-select');
       
-      // Look for match or add option
       let found = false;
       for (let opt of targetSelect.options) {
         if (opt.value === formattedName || opt.text.includes(formattedName)) {
@@ -105,6 +170,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Render 2D Indoor Gazebo Restaurant Map
   function renderMap() {
+    // 0. Auto-Follow Camera Lerp Tracking
+    if (isFollowingRobot && telemetryData && telemetryData.robot_pose) {
+      const rawRobot = worldToCanvasRaw(telemetryData.robot_pose.x, telemetryData.robot_pose.y);
+      const targetPanX = (canvas.width / 2) - (rawRobot.x * zoomLevel);
+      const targetPanY = (canvas.height / 2) - (rawRobot.y * zoomLevel);
+      panOffsetX += (targetPanX - panOffsetX) * 0.12;
+      panOffsetY += (targetPanY - panOffsetY) * 0.12;
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // 1. Sleek Background Floor Grid
@@ -134,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. Zone Floor Background Markings
     const zoneMain = worldToCanvas(-9.0, 1.0);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
-    ctx.font = '600 13px Inter';
+    ctx.font = `${Math.round(13 * Math.min(1.5, Math.max(0.8, zoomLevel)))}px Inter`;
     ctx.fillText("DINING TERRACE (NORTH)", zoneMain.x - 40, zoneMain.y);
 
     const zoneSouth = worldToCanvas(-10.5, -15.0);
@@ -145,7 +219,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const zoneDock = worldToCanvas(-14.2, -6.5);
     ctx.fillStyle = 'rgba(16, 185, 129, 0.07)';
-    ctx.font = '500 11px Inter';
     ctx.fillText("WEST SERVICE & DOCK CORRIDOR", zoneDock.x - 30, zoneDock.y);
 
     // 3. Draw Interior & Exterior Walls
@@ -154,22 +227,21 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.save();
         const pt = worldToCanvas(w.x, w.y);
         ctx.translate(pt.x, pt.y);
-        // Canvas Y is inverted
         ctx.rotate(-w.yaw);
 
-        const pw = (w.sx / (WORLD_MAX_X - WORLD_MIN_X)) * canvas.width;
-        const ph = (w.sy / (WORLD_MAX_Y - WORLD_MIN_Y)) * canvas.height;
+        const pw = (w.sx / (WORLD_MAX_X - WORLD_MIN_X)) * canvas.width * zoomLevel;
+        const ph = (w.sy / (WORLD_MAX_Y - WORLD_MIN_Y)) * canvas.height * zoomLevel;
 
         ctx.fillStyle = '#263345';
         ctx.strokeStyle = '#475569';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.5 * zoomLevel;
         ctx.fillRect(-pw / 2, -ph / 2, pw, ph);
         ctx.strokeRect(-pw / 2, -ph / 2, pw, ph);
         ctx.restore();
       });
     }
 
-    // 4. Draw All 41 Dining Tables from Gazebo
+    // 4. Draw Dining Tables (Scaled 0.65 for spacious aisles & wide navigation corridors)
     if (restaurantLayout.tables && restaurantLayout.tables.length > 0) {
       restaurantLayout.tables.forEach(t => {
         ctx.save();
@@ -177,8 +249,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.translate(pt.x, pt.y);
         ctx.rotate(-t.yaw);
 
-        const pw = (t.sx / (WORLD_MAX_X - WORLD_MIN_X)) * canvas.width;
-        const ph = (t.sy / (WORLD_MAX_Y - WORLD_MIN_Y)) * canvas.height;
+        // Render table slightly sleek (0.65 scale) for wide, spacious distant table appearance
+        const pw = (t.sx / (WORLD_MAX_X - WORLD_MIN_X)) * canvas.width * zoomLevel * 0.65;
+        const ph = (t.sy / (WORLD_MAX_Y - WORLD_MIN_Y)) * canvas.height * zoomLevel * 0.65;
 
         const isHovered = (hoveredTable && hoveredTable.model === t.model);
         const isCurrentTarget = telemetryData && telemetryData.current_task &&
@@ -187,36 +260,38 @@ document.addEventListener('DOMContentLoaded', () => {
         // Table Shadow / Ambient Glow
         if (isCurrentTarget) {
           ctx.shadowColor = '#06b6d4';
-          ctx.shadowBlur = 12;
+          ctx.shadowBlur = 12 * zoomLevel;
         } else if (isHovered) {
           ctx.shadowColor = '#f59e0b';
-          ctx.shadowBlur = 8;
+          ctx.shadowBlur = 8 * zoomLevel;
         }
 
         // Table Surface
         ctx.beginPath();
-        const radius = 4;
+        const radius = Math.max(2, 4 * zoomLevel);
         ctx.roundRect(-pw / 2, -ph / 2, pw, ph, radius);
-        ctx.fillStyle = isCurrentTarget ? 'rgba(6, 182, 212, 0.35)' : (isHovered ? 'rgba(245, 158, 11, 0.35)' : 'rgba(245, 158, 11, 0.14)');
+        ctx.fillStyle = isCurrentTarget ? 'rgba(6, 182, 212, 0.40)' : (isHovered ? 'rgba(245, 158, 11, 0.40)' : 'rgba(245, 158, 11, 0.16)');
         ctx.fill();
         ctx.strokeStyle = isCurrentTarget ? '#06b6d4' : (isHovered ? '#fbbf24' : '#d97706');
-        ctx.lineWidth = isCurrentTarget || isHovered ? 2 : 1.2;
+        ctx.lineWidth = (isCurrentTarget || isHovered ? 2 : 1.2) * Math.max(0.7, zoomLevel);
         ctx.stroke();
 
         // Subtle Dining Chairs (top & bottom dots)
         ctx.fillStyle = '#64748b';
-        ctx.fillRect(-pw * 0.3, -ph / 2 - 3, pw * 0.6, 2);
-        ctx.fillRect(-pw * 0.3, ph / 2 + 1, pw * 0.6, 2);
+        ctx.fillRect(-pw * 0.3, -ph / 2 - 3 * zoomLevel, pw * 0.6, 2 * zoomLevel);
+        ctx.fillRect(-pw * 0.3, ph / 2 + 1 * zoomLevel, pw * 0.6, 2 * zoomLevel);
 
         ctx.restore();
 
         // Table Label
-        ctx.fillStyle = isCurrentTarget ? '#22d3ee' : '#f59e0b';
-        ctx.font = 'bold 9px Inter';
-        ctx.textAlign = 'center';
-        const label = t.model.replace('table_', 'T').replace('table', 'T0');
-        ctx.fillText(label, pt.x, pt.y + 3);
-        ctx.textAlign = 'start';
+        if (zoomLevel > 0.6) {
+          ctx.fillStyle = isCurrentTarget ? '#22d3ee' : '#f59e0b';
+          ctx.font = `bold ${Math.round(9 * Math.min(1.4, Math.max(0.8, zoomLevel)))}px Inter`;
+          ctx.textAlign = 'center';
+          const label = t.model.replace('table_', 'T').replace('table', 'T0');
+          ctx.fillText(label, pt.x, pt.y + 3 * zoomLevel);
+          ctx.textAlign = 'start';
+        }
       });
     }
 
@@ -227,26 +302,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (name === "Dock") {
           // Charging Dock Station
+          const size = 36 * zoomLevel;
           ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
           ctx.strokeStyle = '#10b981';
-          ctx.lineWidth = 2;
-          ctx.fillRect(pt.x - 18, pt.y - 18, 36, 36);
-          ctx.strokeRect(pt.x - 18, pt.y - 18, 36, 36);
+          ctx.lineWidth = 2 * zoomLevel;
+          ctx.fillRect(pt.x - size / 2, pt.y - size / 2, size, size);
+          ctx.strokeRect(pt.x - size / 2, pt.y - size / 2, size, size);
 
           ctx.fillStyle = '#10b981';
-          ctx.font = 'bold 11px Inter';
-          ctx.fillText("⚡ DOCK", pt.x - 22, pt.y - 22);
+          ctx.font = `bold ${Math.round(11 * Math.min(1.4, zoomLevel))}px Inter`;
+          ctx.fillText("⚡ DOCK", pt.x - size / 2, pt.y - size / 2 - 4);
         } else if (name.includes("Kitchen")) {
           // Kitchen Order Pickup Counter
+          const size = 40 * zoomLevel;
           ctx.fillStyle = 'rgba(59, 130, 246, 0.25)';
           ctx.strokeStyle = '#3b82f6';
-          ctx.lineWidth = 2;
-          ctx.fillRect(pt.x - 20, pt.y - 20, 40, 40);
-          ctx.strokeRect(pt.x - 20, pt.y - 20, 40, 40);
+          ctx.lineWidth = 2 * zoomLevel;
+          ctx.fillRect(pt.x - size / 2, pt.y - size / 2, size, size);
+          ctx.strokeRect(pt.x - size / 2, pt.y - size / 2, size, size);
 
           ctx.fillStyle = '#3b82f6';
-          ctx.font = 'bold 11px Inter';
-          ctx.fillText("🍳 KITCHEN", pt.x - 26, pt.y - 24);
+          ctx.font = `bold ${Math.round(11 * Math.min(1.4, zoomLevel))}px Inter`;
+          ctx.fillText("🍳 KITCHEN", pt.x - size / 2, pt.y - size / 2 - 4);
         }
       });
     }
@@ -262,9 +339,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.lineTo(p.x, p.y);
       });
 
-      ctx.strokeStyle = 'rgba(6, 182, 212, 0.75)';
-      ctx.lineWidth = 2.5;
-      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.85)';
+      ctx.lineWidth = 2.5 * zoomLevel;
+      ctx.setLineDash([6 * zoomLevel, 6 * zoomLevel]);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -274,29 +351,30 @@ document.addEventListener('DOMContentLoaded', () => {
       const obsPt = worldToCanvas(telemetryData.dynamic_obstacle.pose.x, telemetryData.dynamic_obstacle.pose.y);
 
       // Avoidance Safety Margin Zone (1.3m radius)
-      const safetyRadius = (1.3 / (WORLD_MAX_X - WORLD_MIN_X)) * canvas.width;
+      const safetyRadius = (1.3 / (WORLD_MAX_X - WORLD_MIN_X)) * canvas.width * zoomLevel;
       ctx.beginPath();
       ctx.arc(obsPt.x, obsPt.y, safetyRadius, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
       ctx.fill();
       ctx.strokeStyle = 'rgba(239, 68, 68, 0.45)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1.5 * zoomLevel;
+      ctx.setLineDash([4 * zoomLevel, 4 * zoomLevel]);
       ctx.stroke();
       ctx.setLineDash([]);
 
       // Pedestrian Body
       ctx.beginPath();
-      ctx.arc(obsPt.x, obsPt.y, 11, 0, Math.PI * 2);
+      const bodyR = Math.max(6, 11 * zoomLevel);
+      ctx.arc(obsPt.x, obsPt.y, bodyR, 0, Math.PI * 2);
       ctx.fillStyle = '#ef4444';
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * zoomLevel;
       ctx.stroke();
 
       ctx.fillStyle = '#ef4444';
-      ctx.font = 'bold 10px Inter';
-      ctx.fillText("🚶 Human Obstacle", obsPt.x - 38, obsPt.y - 16);
+      ctx.font = `bold ${Math.round(10 * Math.min(1.4, zoomLevel))}px Inter`;
+      ctx.fillText("🚶 Human Obstacle", obsPt.x - 38 * zoomLevel, obsPt.y - 16 * zoomLevel);
     }
 
     // 8. Draw BellaBot Service Robot (Accurate Orientation, Cat Ears, Halo, Trays)
@@ -309,18 +387,18 @@ document.addEventListener('DOMContentLoaded', () => {
       // Collision Evasive Ring
       if (isAvoiding) {
         ctx.beginPath();
-        ctx.arc(rPt.x, rPt.y, 28, 0, Math.PI * 2);
+        ctx.arc(rPt.x, rPt.y, 28 * zoomLevel, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
         ctx.fill();
         ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * zoomLevel;
         ctx.stroke();
       }
 
       ctx.save();
       ctx.translate(rPt.x, rPt.y);
-      // Coordinate transform: robot yaw (ROS +X is forward, canvas Y is down)
       ctx.rotate(-telemetryData.robot_pose.yaw);
+      ctx.scale(zoomLevel, zoomLevel);
 
       // BellaBot Rounded Base Chassis
       ctx.beginPath();
@@ -374,9 +452,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Robot Label Badge
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 10px Inter';
+      ctx.font = `bold ${Math.round(10 * Math.min(1.4, zoomLevel))}px Inter`;
       const labelText = isAvoiding ? "⚠️ AVOIDING" : "🐱 BELLABOT";
-      ctx.fillText(labelText, rPt.x - 28, rPt.y + 24);
+      ctx.fillText(labelText, rPt.x - 28 * zoomLevel, rPt.y + 24 * zoomLevel);
     }
 
     requestAnimationFrame(renderMap);
@@ -519,6 +597,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Low Battery Trigger Button
+  const lowBatBtn = document.getElementById('low-battery-btn');
+  if (lowBatBtn) {
+    lowBatBtn.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/battery/low', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          logSystem("🪫 Low battery (15%) triggered! Auto-docking preemption initiated.", 'warn');
+        }
+      } catch (err) {
+        logSystem("Failed to trigger low battery state.", 'warn');
+      }
+    });
+  }
+
   // Toggle Dynamic Obstacle Button
   document.getElementById('toggle-obstacle-btn').addEventListener('click', async () => {
     dynamicObstacleActive = !dynamicObstacleActive;
@@ -528,7 +622,7 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: dynamicObstacleActive })
       });
-      logSystem(`Dynamic pedestrian obstacle: ${dynamicObstacleActive ? 'ACTIVATED in service corridor' : 'DEACTIVATED'}`, 'info');
+      logSystem(`Dynamic pedestrian obstacle: ${dynamicObstacleActive ? 'ACTIVATED (2D Random Roaming)' : 'DEACTIVATED'}`, 'info');
     } catch (err) {
       logSystem("Failed to toggle dynamic obstacle.", 'warn');
     }
@@ -544,12 +638,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Reset View Button
+  // Map Controls Buttons: Zoom In, Zoom Out, Reset, Toggle Follow
+  const zoomInBtn = document.getElementById('zoom-in-btn');
+  if (zoomInBtn) {
+    zoomInBtn.addEventListener('click', () => {
+      zoomLevel = Math.min(4.5, zoomLevel * 1.25);
+      logSystem(`Map Zoom: ${Math.round(zoomLevel * 100)}%`, 'info');
+    });
+  }
+
+  const zoomOutBtn = document.getElementById('zoom-out-btn');
+  if (zoomOutBtn) {
+    zoomOutBtn.addEventListener('click', () => {
+      zoomLevel = Math.max(0.5, zoomLevel * 0.8);
+      logSystem(`Map Zoom: ${Math.round(zoomLevel * 100)}%`, 'info');
+    });
+  }
+
   const resetBtn = document.getElementById('reset-view-btn');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
+      zoomLevel = 1.0;
+      panOffsetX = 0.0;
+      panOffsetY = 0.0;
+      isFollowingRobot = true;
+      const followBtn = document.getElementById('toggle-follow-btn');
+      if (followBtn) {
+        followBtn.textContent = '🎥 Follow Cam: ON';
+        followBtn.className = 'btn btn-sm btn-primary';
+      }
       adjustCanvasSize();
-      logSystem("Map view refreshed.", 'info');
+      logSystem("Map view reset to default 100%.", 'info');
+    });
+  }
+
+  const toggleFollowBtn = document.getElementById('toggle-follow-btn');
+  if (toggleFollowBtn) {
+    toggleFollowBtn.addEventListener('click', () => {
+      isFollowingRobot = !isFollowingRobot;
+      toggleFollowBtn.textContent = isFollowingRobot ? '🎥 Follow Cam: ON' : '🎥 Follow Cam: OFF';
+      toggleFollowBtn.className = isFollowingRobot ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline';
+      logSystem(`Auto-Follow Camera: ${isFollowingRobot ? 'ENABLED' : 'DISABLED'}`, 'info');
     });
   }
 
@@ -567,3 +696,4 @@ document.addEventListener('DOMContentLoaded', () => {
   renderMap();
   connectWebSocket();
 });
+

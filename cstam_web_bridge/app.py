@@ -12,6 +12,7 @@ import os
 import json
 import time
 import math
+import random
 import asyncio
 from typing import Optional, List, Dict, Tuple, Any
 from contextlib import asynccontextmanager
@@ -33,7 +34,11 @@ battery_sim = BatterySimulator(initial_percentage=100.0, time_scale=20.0)
 dock_controller = AutoDockingController(idle_timeout=15.0, low_battery_threshold=20.0, full_charge_threshold=90.0)
 
 import heapq
-import numpy as np
+try:
+    import numpy as np
+    HAVE_NUMPY = True
+except ImportError:
+    HAVE_NUMPY = False
 
 # Map and Navigation Grid Setup
 MAP_PGM_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ros2_ws', 'src', 'cstam_navigation', 'maps', 'cstam_map.pgm'))
@@ -49,7 +54,7 @@ _grid_w = 130
 
 def init_navigation_map():
     global _map_loaded, _inflated_grid, _grid_h, _grid_w
-    if _map_loaded or not os.path.exists(MAP_PGM_PATH):
+    if _map_loaded or not HAVE_NUMPY or not os.path.exists(MAP_PGM_PATH):
         return
     try:
         with open(MAP_PGM_PATH, 'rb') as f:
@@ -79,6 +84,7 @@ init_navigation_map()
 robot_pose = {"x": -14.0, "y": -2.0, "yaw": 0.0}
 dynamic_obstacle_active = False
 dynamic_obstacle_pose = {"x": -14.0, "y": 0.0}
+dynamic_obstacle_target = {"x": -8.0, "y": -4.0}
 current_route_waypoints = []
 active_avoidance = False
 
@@ -248,11 +254,22 @@ async def simulation_telemetry_loop():
     while True:
         await asyncio.sleep(dt)
 
-        # 1. Update Dynamic Obstacle (Walking Human crossing west service corridor)
+        # 1. Update Dynamic Obstacle (Walking Human roaming randomly all over the map)
         if dynamic_obstacle_active:
-            t = time.time()
-            dynamic_obstacle_pose["x"] = round(-14.0 + 0.3 * math.cos(t * 0.5), 2)
-            dynamic_obstacle_pose["y"] = round(-0.5 + 2.0 * math.sin(t * 0.7), 2)
+            dx_obs = dynamic_obstacle_target["x"] - dynamic_obstacle_pose["x"]
+            dy_obs = dynamic_obstacle_target["y"] - dynamic_obstacle_pose["y"]
+            dist_to_obs_target = math.hypot(dx_obs, dy_obs)
+
+            if dist_to_obs_target < 0.4:
+                # Arrived at waypoint, select a new random destination across the restaurant floor
+                dynamic_obstacle_target["x"] = round(random.uniform(-15.5, 7.0), 2)
+                dynamic_obstacle_target["y"] = round(random.uniform(-17.0, 4.5), 2)
+            else:
+                # Walk smoothly toward current random target (~0.18m/step)
+                step_obs = min(0.18, dist_to_obs_target)
+                angle_obs = math.atan2(dy_obs, dx_obs)
+                dynamic_obstacle_pose["x"] = round(dynamic_obstacle_pose["x"] + step_obs * math.cos(angle_obs), 2)
+                dynamic_obstacle_pose["y"] = round(dynamic_obstacle_pose["y"] + step_obs * math.sin(angle_obs), 2)
 
         # 2. Update Physical Battery State
         is_moving = task_manager.robot_state in ["navigating", "en_route", "docking", "avoiding_obstacle"]
@@ -473,6 +490,19 @@ def toggle_obstacle(req: ObstacleToggleRequest):
     global dynamic_obstacle_active
     dynamic_obstacle_active = req.active
     return {"success": True, "dynamic_obstacle_active": dynamic_obstacle_active}
+
+@app.post("/api/battery/low")
+def trigger_low_battery():
+    battery_sim.percentage = 15.0
+    battery_sim.soc = 0.15
+    battery_sim._calculate_ocv()
+    battery_sim.voltage = battery_sim.ocv
+    task_manager.update_battery(15.0)
+    return {
+        "success": True,
+        "message": "Low battery state (15%) manually triggered. Autonomous docking initiated.",
+        "battery_percentage": 15.0
+    }
 
 
 # WebSocket Endpoint

@@ -112,7 +112,10 @@
         <h2>🗺️ 2D Gazebo Restaurant Map (41 Tables & Corridors)</h2>
         <div class="map-controls">
           <span id="avoidance-badge" style="display: none; padding: 4px 10px; background: #ef4444; border-radius: 12px; font-size: 11px; font-weight: 600; color: white;">⚠️ AVOIDING OBSTACLE</span>
-          <button id="reset-view-btn" class="btn btn-sm btn-outline">Reset View</button>
+          <button id="toggle-follow-btn" class="btn btn-sm btn-primary" style="font-size: 11px;">🎥 Follow Cam: ON</button>
+          <button id="zoom-in-btn" class="btn btn-sm btn-outline" style="font-weight: bold;">🔍 +</button>
+          <button id="zoom-out-btn" class="btn btn-sm btn-outline" style="font-weight: bold;">🔍 -</button>
+          <button id="reset-view-btn" class="btn btn-sm btn-outline">⟲ Reset View</button>
         </div>
       </div>
 
@@ -175,6 +178,10 @@
         <div class="action-buttons">
           <button id="manual-dock-btn" class="btn btn-warning">
             🔌 Return to Dock
+          </button>
+
+          <button id="low-battery-btn" class="btn btn-danger" style="background: #dc2626; color: white;">
+            🪫 Low Battery (15%)
           </button>
           
           <button id="toggle-obstacle-btn" class="btn btn-secondary">
