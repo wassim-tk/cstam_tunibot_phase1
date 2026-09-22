@@ -11,6 +11,7 @@ Models a 24V 20Ah (480Wh, 7S NMC) mobile robot battery pack:
 
 import time
 import math
+import json
 
 try:
     import rclpy
@@ -34,11 +35,18 @@ class BatterySimulator:
         drain_rate_idle=0.02,
         drain_rate_nav=0.15,
         charge_rate=2.0,
-        time_scale=15.0  # Accelerated time scale for interactive simulation
+        time_scale=15.0,  # Accelerated time scale for interactive simulation
+        mode="auto"
     ):
         self.capacity = 20.0  # Nominal capacity in Ah (Amp-hours)
         self.percentage = float(max(0.0, min(100.0, initial_percentage)))
         self.soc = self.percentage / 100.0  # State of Charge [0.0 - 1.0]
+
+        # Operation mode: physical (default) or linear (unit-test/legacy compatibility)
+        if mode == "linear" or (mode == "auto" and (drain_rate_idle != 0.02 or drain_rate_nav != 0.15 or charge_rate != 2.0)):
+            self.mode = "linear"
+        else:
+            self.mode = "physical"
 
         # Internal cell and pack resistance in Ohms (45 mOhm)
         self.r_internal = 0.045
@@ -109,6 +117,23 @@ class BatterySimulator:
         Updates battery state for a time step dt (seconds).
         Integrates current using Coulomb counting and applies internal resistance.
         """
+        if self.mode == "linear":
+            if self.is_docked:
+                self.percentage = min(100.0, round(self.percentage + self.charge_rate * dt, 2))
+                self.soc = self.percentage / 100.0
+                self.current = -self.charge_rate
+                self.power = round(abs(self.current) * 24.0, 1)
+                self.voltage = 29.4
+            else:
+                rate = self.drain_rate_nav if self.is_moving else self.drain_rate_idle
+                self.percentage = max(0.0, round(self.percentage - rate * dt, 2))
+                self.soc = self.percentage / 100.0
+                self.current = round(rate, 2)
+                self.power = round(rate * 24.0, 1)
+                self._calculate_ocv()
+                self.voltage = self.ocv
+            return self.percentage
+
         effective_dt = dt * self.time_scale
 
         if self.is_docked:

@@ -13,7 +13,8 @@ import json
 import time
 import math
 import asyncio
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple, Any
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
@@ -26,28 +27,65 @@ from cstam_core.delivery_task_manager import TaskQueueManager, DEFAULT_WAYPOINTS
 from cstam_core.battery_simulator import BatterySimulator
 from cstam_core.docking_controller import AutoDockingController
 
-app = FastAPI(
-    title="CSTAM 3D Waiter Service Robot API",
-    version="2.0.0",
-    description="Mission control & telemetry for autonomous multi-shelf restaurant waiter robot"
-)
-
 # Instantiate Core Managers & Physical Battery Simulator
 task_manager = TaskQueueManager()
 battery_sim = BatterySimulator(initial_percentage=100.0, time_scale=20.0)
 dock_controller = AutoDockingController(idle_timeout=15.0, low_battery_threshold=20.0, full_charge_threshold=90.0)
 
-# Simulated Waiter Robot State Variables
-robot_pose = {"x": -4.0, "y": -4.0, "yaw": 0.0}
+import heapq
+import numpy as np
+
+# Map and Navigation Grid Setup
+MAP_PGM_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ros2_ws', 'src', 'cstam_navigation', 'maps', 'cstam_map.pgm'))
+LAYOUT_JSON_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), 'static', 'restaurant_layout.json'))
+
+_map_loaded = False
+_inflated_grid = None
+_map_res = 0.20  # 20cm grid resolution for fast planning
+_map_origin_x = -17.0
+_map_max_y = 6.0
+_grid_h = 125
+_grid_w = 130
+
+def init_navigation_map():
+    global _map_loaded, _inflated_grid, _grid_h, _grid_w
+    if _map_loaded or not os.path.exists(MAP_PGM_PATH):
+        return
+    try:
+        with open(MAP_PGM_PATH, 'rb') as f:
+            f.readline()
+            f.readline()
+            f.readline()
+            raw = np.frombuffer(f.read(), dtype=np.uint8).reshape((500, 520))
+        scale = 4
+        _grid_h, _grid_w = 500 // scale, 520 // scale
+        grid = np.zeros((_grid_h, _grid_w), dtype=bool)
+        for r in range(_grid_h):
+            for c in range(_grid_w):
+                block = raw[r*scale:(r+1)*scale, c*scale:(c+1)*scale]
+                grid[r, c] = np.all(block == 254)
+        _inflated_grid = grid.copy()
+        for r in range(1, _grid_h - 1):
+            for c in range(1, _grid_w - 1):
+                if not grid[r, c]:
+                    _inflated_grid[max(0, r-1):min(_grid_h, r+2), max(0, c-1):min(_grid_w, c+2)] = False
+        _map_loaded = True
+    except Exception as e:
+        print(f"Notice: Navigation map loaded with fallback: {e}")
+
+init_navigation_map()
+
+# Simulated Waiter Robot State Variables (Spawned at Dock in West Service Hallway)
+robot_pose = {"x": -14.0, "y": -2.0, "yaw": 0.0}
 dynamic_obstacle_active = False
-dynamic_obstacle_pose = {"x": 0.0, "y": -1.0}
+dynamic_obstacle_pose = {"x": -14.0, "y": 0.0}
 current_route_waypoints = []
 active_avoidance = False
 
-# Waiter Robot 3-Tier Shelf Trays
-shelves_state = {
-    "shelf_1": {"name": "Lower Shelf (Heavy Dishes)", "item": None, "status": "empty"},
-    "shelf_2": {"name": "Middle Shelf (Hot Entrees)", "item": None, "status": "empty"},
+# BellaBot 3-Tier Shelf Trays
+shelves_state: Dict[str, Dict[str, Any]] = {
+    "shelf_1": {"name": "Lower Shelf (Heavy Dishes & Platters)", "item": None, "status": "empty"},
+    "shelf_2": {"name": "Middle Shelf (Hot Entrees & Mains)", "item": None, "status": "empty"},
     "shelf_3": {"name": "Upper Shelf (Drinks & Desserts)", "item": None, "status": "empty"}
 }
 
@@ -87,31 +125,77 @@ class ConnectionManager:
 ws_manager = ConnectionManager()
 
 
-def plan_doorway_path(start_pos, goal_pos):
+def plan_restaurant_path(start_pos, goal_pos):
     """
-    Plans collision-free path between rooms avoiding the partition wall at y=1.0.
-    Crosses via the central doorway at (0.5, 1.0).
+    Computes collision-free A* route through restaurant.world corridors and aisles.
     """
+    init_navigation_map()
+    if _inflated_grid is None:
+        return [{"x": goal_pos["x"], "y": goal_pos["y"]}]
+
     sx, sy = start_pos["x"], start_pos["y"]
     gx, gy = goal_pos["x"], goal_pos["y"]
 
-    path = []
-    crosses_partition = (sy < 0.9 and gy > 1.1) or (sy > 1.1 and gy < 0.9)
+    sr = int((_map_max_y - sy) / _map_res)
+    sc = int((sx - _map_origin_x) / _map_res)
+    gr = int((_map_max_y - gy) / _map_res)
+    gc = int((gx - _map_origin_x) / _map_res)
 
-    if crosses_partition:
-        if sy < 0.9:
-            # Traveling South -> North: approach doorway from south, pass through, enter north
-            path.append({"x": 0.5, "y": -0.2})
-            path.append({"x": 0.5, "y": 1.0})
-            path.append({"x": 0.5, "y": 2.2})
-        else:
-            # Traveling North -> South: approach doorway from north, pass through, enter south
-            path.append({"x": 0.5, "y": 2.2})
-            path.append({"x": 0.5, "y": 1.0})
-            path.append({"x": 0.5, "y": -0.2})
+    sr, sc = max(0, min(_grid_h - 1, sr)), max(0, min(_grid_w - 1, sc))
+    gr, gc = max(0, min(_grid_h - 1, gr)), max(0, min(_grid_w - 1, gc))
 
-    path.append({"x": gx, "y": gy})
-    return path
+    # Clamp to nearest free cell if starting or ending on boundary
+    for r_var, c_var in [('sr', 'sc'), ('gr', 'gc')]:
+        r_val, c_val = locals()[r_var], locals()[c_var]
+        if not _inflated_grid[r_val, c_val]:
+            found = False
+            for rad in range(1, 15):
+                for dr in range(-rad, rad + 1):
+                    for dc in range(-rad, rad + 1):
+                        nr, nc = r_val + dr, c_val + dc
+                        if 0 <= nr < _grid_h and 0 <= nc < _grid_w and _inflated_grid[nr, nc]:
+                            if r_var == 'sr': sr, sc = nr, nc
+                            else: gr, gc = nr, nc
+                            found = True
+                            break
+                    if found: break
+                if found: break
+
+    open_set: List[Tuple[float, int, int]] = [(0.0, sr, sc)]
+    came_from: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    g_score: Dict[Tuple[int, int], float] = {(sr, sc): 0.0}
+
+    while open_set:
+        cost, r, c = heapq.heappop(open_set)
+        if (r, c) == (gr, gc):
+            raw_path = []
+            curr = (r, c)
+            while curr in came_from:
+                px = _map_origin_x + (curr[1] + 0.5) * _map_res
+                py = _map_max_y - (curr[0] + 0.5) * _map_res
+                raw_path.append({"x": round(px, 2), "y": round(py, 2)})
+                curr = came_from[curr]
+            raw_path.reverse()
+            # Prune waypoints for smooth navigation: every 3rd waypoint + goal
+            pruned = [raw_path[i] for i in range(0, len(raw_path), 3)]
+            pruned.append({"x": round(gx, 2), "y": round(gy, 2)})
+            return pruned
+
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < _grid_h and 0 <= nc < _grid_w and _inflated_grid[nr, nc]:
+                move_cost = 1.414 if dr != 0 and dc != 0 else 1.0
+                new_g = g_score[(r, c)] + move_cost
+                if (nr, nc) not in g_score or new_g < g_score[(nr, nc)]:
+                    g_score[(nr, nc)] = new_g
+                    h_cost = math.hypot(nr - gr, nc - gc)
+                    heapq.heappush(open_set, (new_g + h_cost, nr, nc))
+                    came_from[(nr, nc)] = (r, c)
+
+    return [{"x": gx, "y": gy}]
+
+# Alias for backwards compatibility
+plan_doorway_path = plan_restaurant_path
 
 
 def assign_shelf_for_delivery(item_name: str) -> str:
@@ -144,10 +228,7 @@ def clear_shelves():
         shelves_state[s_id]["status"] = "empty"
 
 
-# Background Telemetry & Navigation Loop
-@app.on_event("startup")
-async def start_background_sim():
-    asyncio.create_task(simulation_telemetry_loop())
+
 
 
 async def simulation_telemetry_loop():
@@ -167,11 +248,11 @@ async def simulation_telemetry_loop():
     while True:
         await asyncio.sleep(dt)
 
-        # 1. Update Dynamic Obstacle (Walking Human crossing corridor at y = -1.0)
+        # 1. Update Dynamic Obstacle (Walking Human crossing west service corridor)
         if dynamic_obstacle_active:
             t = time.time()
-            dynamic_obstacle_pose["x"] = round(2.2 * math.sin(t * 0.7), 2)
-            dynamic_obstacle_pose["y"] = -1.0
+            dynamic_obstacle_pose["x"] = round(-14.0 + 0.3 * math.cos(t * 0.5), 2)
+            dynamic_obstacle_pose["y"] = round(-0.5 + 2.0 * math.sin(t * 0.7), 2)
 
         # 2. Update Physical Battery State
         is_moving = task_manager.robot_state in ["navigating", "en_route", "docking", "avoiding_obstacle"]
@@ -203,7 +284,7 @@ async def simulation_telemetry_loop():
                     task_manager.robot_state = "navigating"
                     current_route_waypoints = []
                     target_cache = None
-                    assign_shelf_for_delivery(next_t.get("item", "Dishes"))
+                    assign_shelf_for_delivery(str(next_t.get("item") or "Dishes"))
 
         # 5. Collision-Free Path Planning & Movement
         active_avoidance = False
@@ -291,7 +372,7 @@ async def simulation_telemetry_loop():
         telemetry = {
             "timestamp": time.time(),
             "robot_pose": robot_pose,
-            "robot_type": "Waiter Robot (3-Tier Shelves)",
+            "robot_type": "BellaBot (3-Tier Autonomous Service Robot)",
             "battery_percentage": round(curr_bat, 1),
             "voltage": round(battery_sim.voltage, 2),
             "current_amps": round(abs(battery_sim.current), 2),
@@ -306,6 +387,7 @@ async def simulation_telemetry_loop():
             "queue": list(task_manager.queue),
             "completed_tasks": task_manager.task_history[-5:],
             "waypoints": DEFAULT_WAYPOINTS,
+            "map_bounds": {"min_x": -17.0, "max_x": 9.0, "min_y": -19.0, "max_y": 6.0},
             "dynamic_obstacle": {
                 "active": dynamic_obstacle_active,
                 "pose": dynamic_obstacle_pose
@@ -314,6 +396,20 @@ async def simulation_telemetry_loop():
 
         await ws_manager.broadcast(telemetry)
 
+
+# Lifespan Context Manager
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
+    sim_task = asyncio.create_task(simulation_telemetry_loop())
+    yield
+    sim_task.cancel()
+
+app = FastAPI(
+    title="CSTAM 3D Waiter Service Robot API",
+    version="2.0.0",
+    description="Mission control & telemetry for autonomous multi-shelf restaurant waiter robot",
+    lifespan=lifespan
+)
 
 # REST API Endpoints
 @app.get("/api/health")
@@ -339,9 +435,16 @@ def get_status():
 def get_waypoints():
     return DEFAULT_WAYPOINTS
 
+@app.get("/api/map/layout")
+def get_map_layout():
+    if os.path.exists(LAYOUT_JSON_PATH):
+        with open(LAYOUT_JSON_PATH, "r") as f:
+            return json.load(f)
+    return {"walls": [], "tables": []}
+
 @app.post("/api/delivery")
 def submit_delivery(req: DeliveryRequest):
-    res = task_manager.add_delivery_request(req.target, req.item)
+    res = task_manager.add_delivery_request(req.target, req.item or "General Item")
     if not res["success"]:
         raise HTTPException(status_code=400, detail=res["error"])
     return res

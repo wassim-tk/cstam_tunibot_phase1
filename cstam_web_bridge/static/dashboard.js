@@ -1,147 +1,285 @@
 /**
- * CSTAM Waiter Robot Dashboard Controller
- * 2D Canvas Map Renderer & Real-Time Physical Telemetry Client
+ * CSTAM Waiter Robot Dashboard Controller - Gazebo restaurant.world Adaptation
+ * 2D Canvas Map Renderer & Real-Time Telemetry Client for BellaBot
  */
 
 document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('map-canvas');
   const ctx = canvas.getContext('2d');
 
-  // Map Coordinates Setup (World bounds: -5.0 to +5.0)
-  const WORLD_MIN = -5.0;
-  const WORLD_MAX = 5.0;
-  const CANVAS_SIZE = 600;
+  // Map Coordinates Setup (Full bounds of Gazebo restaurant.world)
+  const WORLD_MIN_X = -17.0;
+  const WORLD_MAX_X = 9.0;   // 26m width
+  const WORLD_MIN_Y = -19.0;
+  const WORLD_MAX_Y = 6.0;   // 25m height
 
   let telemetryData = null;
   let ws = null;
   let dynamicObstacleActive = false;
+  let restaurantLayout = { walls: [], tables: [] };
+  let hoveredTable = null;
+
+  // Set high-DPI canvas
+  function adjustCanvasSize() {
+    canvas.width = 650;
+    canvas.height = 625;
+  }
+  adjustCanvasSize();
 
   // Transform World (x, y) to Canvas Pixel (px, py)
   function worldToCanvas(x, y) {
-    const px = ((x - WORLD_MIN) / (WORLD_MAX - WORLD_MIN)) * CANVAS_SIZE;
-    const py = ((WORLD_MAX - y) / (WORLD_MAX - WORLD_MIN)) * CANVAS_SIZE;
+    const px = ((x - WORLD_MIN_X) / (WORLD_MAX_X - WORLD_MIN_X)) * canvas.width;
+    const py = ((WORLD_MAX_Y - y) / (WORLD_MAX_Y - WORLD_MIN_Y)) * canvas.height;
     return { x: px, y: py };
   }
 
-  // Render 2D Indoor Restaurant Map
-  function renderMap() {
-    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  // Transform Canvas Pixel to World (x, y)
+  function canvasToWorld(px, py) {
+    const x = WORLD_MIN_X + (px / canvas.width) * (WORLD_MAX_X - WORLD_MIN_X);
+    const y = WORLD_MAX_Y - (py / canvas.height) * (WORLD_MAX_Y - WORLD_MIN_Y);
+    return { x, y };
+  }
 
-    // 1. Draw Grid Background
-    ctx.strokeStyle = '#1e293b';
+  // Fetch restaurant geometric layout
+  async function loadRestaurantLayout() {
+    try {
+      const res = await fetch('/api/map/layout');
+      if (res.ok) {
+        restaurantLayout = await res.json();
+      }
+    } catch (e) {
+      console.warn("Could not load /api/map/layout, using embedded fallback:", e);
+    }
+  }
+  loadRestaurantLayout();
+
+  // Mouse hover & click table detection
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const worldPos = canvasToWorld(mx, my);
+
+    hoveredTable = null;
+    for (const t of restaurantLayout.tables) {
+      const dx = worldPos.x - t.x;
+      const dy = worldPos.y - t.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1.3) {
+        hoveredTable = t;
+        break;
+      }
+    }
+    canvas.style.cursor = hoveredTable ? 'pointer' : 'crosshair';
+  });
+
+  canvas.addEventListener('click', (e) => {
+    if (hoveredTable) {
+      const formattedName = formatTableName(hoveredTable.model);
+      const targetSelect = document.getElementById('target-select');
+      
+      // Look for match or add option
+      let found = false;
+      for (let opt of targetSelect.options) {
+        if (opt.value === formattedName || opt.text.includes(formattedName)) {
+          targetSelect.value = opt.value;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        const newOpt = document.createElement('option');
+        newOpt.value = formattedName;
+        newOpt.text = `${formattedName} (Selected on Map)`;
+        targetSelect.appendChild(newOpt);
+        targetSelect.value = formattedName;
+      }
+      logSystem(`📍 Selected ${formattedName} from map click. Ready to dispatch.`, 'info');
+    }
+  });
+
+  function formatTableName(rawName) {
+    if (rawName === "table") return "Table 0";
+    return rawName.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+
+  // Render 2D Indoor Gazebo Restaurant Map
+  function renderMap() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 1. Sleek Background Floor Grid
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Grid lines (every 2 meters)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
     ctx.lineWidth = 1;
-    const step = CANVAS_SIZE / 10;
-    for (let i = 0; i <= CANVAS_SIZE; i += step) {
+    for (let gx = Math.ceil(WORLD_MIN_X); gx <= WORLD_MAX_X; gx += 2) {
+      const p1 = worldToCanvas(gx, WORLD_MIN_Y);
+      const p2 = worldToCanvas(gx, WORLD_MAX_Y);
       ctx.beginPath();
-      ctx.moveTo(i, 0); ctx.lineTo(i, CANVAS_SIZE);
-      ctx.moveTo(0, i); ctx.lineTo(CANVAS_SIZE, i);
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    }
+    for (let gy = Math.ceil(WORLD_MIN_Y); gy <= WORLD_MAX_Y; gy += 2) {
+      const p1 = worldToCanvas(WORLD_MIN_X, gy);
+      const p2 = worldToCanvas(WORLD_MAX_X, gy);
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
       ctx.stroke();
     }
 
-    // 2. Draw Outer Walls Border
-    ctx.fillStyle = '#334155';
-    ctx.fillRect(0, 0, CANVAS_SIZE, 12);
-    ctx.fillRect(0, CANVAS_SIZE - 12, CANVAS_SIZE, 12);
-    ctx.fillRect(0, 0, 12, CANVAS_SIZE);
-    ctx.fillRect(CANVAS_SIZE - 12, 0, 12, CANVAS_SIZE);
+    // 2. Zone Floor Background Markings
+    const zoneMain = worldToCanvas(-9.0, 1.0);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+    ctx.font = '600 13px Inter';
+    ctx.fillText("DINING TERRACE (NORTH)", zoneMain.x - 40, zoneMain.y);
 
-    // 3. Draw Interior Partition Walls with Central Doorway Gap (x=0.0 to x=1.0 at y=1.0)
-    // Left partition wall: x = -5.0 to 0.0, y = 0.9 to 1.1
-    const p1 = worldToCanvas(-5.0, 1.1);
-    const p2 = worldToCanvas(0.0, 0.9);
-    ctx.fillStyle = '#475569';
-    ctx.fillRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+    const zoneSouth = worldToCanvas(-10.5, -15.0);
+    ctx.fillText("PATIO DINING (SOUTH WING)", zoneSouth.x - 50, zoneSouth.y);
 
-    // Right partition wall: x = 1.0 to 5.0, y = 0.9 to 1.1
-    const p3 = worldToCanvas(1.0, 1.1);
-    const p4 = worldToCanvas(5.0, 0.9);
-    ctx.fillRect(p3.x, p3.y, p4.x - p3.x, p4.y - p3.y);
+    const zoneEast = worldToCanvas(1.5, -2.0);
+    ctx.fillText("MAIN LOUNGE & SALON", zoneEast.x - 45, zoneEast.y);
 
-    // Doorway Guide Lines (Green dashed lines at x=0.0 and x=1.0)
-    const dLeft = worldToCanvas(0.0, 1.1);
-    const dRight = worldToCanvas(1.0, 0.9);
-    ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 4]);
-    ctx.strokeRect(dLeft.x, dLeft.y, dRight.x - dLeft.x, dRight.y - dLeft.y);
-    ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(16, 185, 129, 0.7)';
-    ctx.font = '9px Inter';
-    ctx.fillText("DOORWAY (1.0m)", dLeft.x + 6, dLeft.y - 4);
+    const zoneDock = worldToCanvas(-14.2, -6.5);
+    ctx.fillStyle = 'rgba(16, 185, 129, 0.07)';
+    ctx.font = '500 11px Inter';
+    ctx.fillText("WEST SERVICE & DOCK CORRIDOR", zoneDock.x - 30, zoneDock.y);
 
-    // 4. Draw Waypoints / Dining Tables
+    // 3. Draw Interior & Exterior Walls
+    if (restaurantLayout.walls && restaurantLayout.walls.length > 0) {
+      restaurantLayout.walls.forEach(w => {
+        ctx.save();
+        const pt = worldToCanvas(w.x, w.y);
+        ctx.translate(pt.x, pt.y);
+        // Canvas Y is inverted
+        ctx.rotate(-w.yaw);
+
+        const pw = (w.sx / (WORLD_MAX_X - WORLD_MIN_X)) * canvas.width;
+        const ph = (w.sy / (WORLD_MAX_Y - WORLD_MIN_Y)) * canvas.height;
+
+        ctx.fillStyle = '#263345';
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 1.5;
+        ctx.fillRect(-pw / 2, -ph / 2, pw, ph);
+        ctx.strokeRect(-pw / 2, -ph / 2, pw, ph);
+        ctx.restore();
+      });
+    }
+
+    // 4. Draw All 41 Dining Tables from Gazebo
+    if (restaurantLayout.tables && restaurantLayout.tables.length > 0) {
+      restaurantLayout.tables.forEach(t => {
+        ctx.save();
+        const pt = worldToCanvas(t.x, t.y);
+        ctx.translate(pt.x, pt.y);
+        ctx.rotate(-t.yaw);
+
+        const pw = (t.sx / (WORLD_MAX_X - WORLD_MIN_X)) * canvas.width;
+        const ph = (t.sy / (WORLD_MAX_Y - WORLD_MIN_Y)) * canvas.height;
+
+        const isHovered = (hoveredTable && hoveredTable.model === t.model);
+        const isCurrentTarget = telemetryData && telemetryData.current_task &&
+          (telemetryData.current_task.target.toLowerCase() === formatTableName(t.model).toLowerCase());
+
+        // Table Shadow / Ambient Glow
+        if (isCurrentTarget) {
+          ctx.shadowColor = '#06b6d4';
+          ctx.shadowBlur = 12;
+        } else if (isHovered) {
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 8;
+        }
+
+        // Table Surface
+        ctx.beginPath();
+        const radius = 4;
+        ctx.roundRect(-pw / 2, -ph / 2, pw, ph, radius);
+        ctx.fillStyle = isCurrentTarget ? 'rgba(6, 182, 212, 0.35)' : (isHovered ? 'rgba(245, 158, 11, 0.35)' : 'rgba(245, 158, 11, 0.14)');
+        ctx.fill();
+        ctx.strokeStyle = isCurrentTarget ? '#06b6d4' : (isHovered ? '#fbbf24' : '#d97706');
+        ctx.lineWidth = isCurrentTarget || isHovered ? 2 : 1.2;
+        ctx.stroke();
+
+        // Subtle Dining Chairs (top & bottom dots)
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(-pw * 0.3, -ph / 2 - 3, pw * 0.6, 2);
+        ctx.fillRect(-pw * 0.3, ph / 2 + 1, pw * 0.6, 2);
+
+        ctx.restore();
+
+        // Table Label
+        ctx.fillStyle = isCurrentTarget ? '#22d3ee' : '#f59e0b';
+        ctx.font = 'bold 9px Inter';
+        ctx.textAlign = 'center';
+        const label = t.model.replace('table_', 'T').replace('table', 'T0');
+        ctx.fillText(label, pt.x, pt.y + 3);
+        ctx.textAlign = 'start';
+      });
+    }
+
+    // 5. Draw Key Service Waypoints (Dock Station & Kitchen Pickup)
     if (telemetryData && telemetryData.waypoints) {
       Object.entries(telemetryData.waypoints).forEach(([name, wp]) => {
         const pt = worldToCanvas(wp.x, wp.y);
 
         if (name === "Dock") {
-          // Green Docking Station Pad
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+          // Charging Dock Station
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
           ctx.strokeStyle = '#10b981';
           ctx.lineWidth = 2;
-          ctx.fillRect(pt.x - 22, pt.y - 22, 44, 44);
-          ctx.strokeRect(pt.x - 22, pt.y - 22, 44, 44);
+          ctx.fillRect(pt.x - 18, pt.y - 18, 36, 36);
+          ctx.strokeRect(pt.x - 18, pt.y - 18, 36, 36);
 
           ctx.fillStyle = '#10b981';
           ctx.font = 'bold 11px Inter';
-          ctx.fillText("⚡ DOCK", pt.x - 20, pt.y - 26);
+          ctx.fillText("⚡ DOCK", pt.x - 22, pt.y - 22);
         } else if (name.includes("Kitchen")) {
-          // Kitchen Pickup Counter
-          ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
+          // Kitchen Order Pickup Counter
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.25)';
           ctx.strokeStyle = '#3b82f6';
           ctx.lineWidth = 2;
-          ctx.fillRect(pt.x - 26, pt.y - 26, 52, 52);
-          ctx.strokeRect(pt.x - 26, pt.y - 26, 52, 52);
+          ctx.fillRect(pt.x - 20, pt.y - 20, 40, 40);
+          ctx.strokeRect(pt.x - 20, pt.y - 20, 40, 40);
 
           ctx.fillStyle = '#3b82f6';
           ctx.font = 'bold 11px Inter';
-          ctx.fillText("🍳 KITCHEN", pt.x - 26, pt.y - 30);
-        } else {
-          // Dining Tables
-          ctx.beginPath();
-          ctx.arc(pt.x, pt.y, 16, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(245, 158, 11, 0.15)';
-          ctx.fill();
-          ctx.strokeStyle = '#f59e0b';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-
-          ctx.fillStyle = '#f59e0b';
-          ctx.font = 'bold 11px Inter';
-          ctx.fillText(name, pt.x - 18, pt.y - 20);
+          ctx.fillText("🍳 KITCHEN", pt.x - 26, pt.y - 24);
         }
       });
     }
 
-    // 5. Draw Planned Doorway Navigation Path (Dashed Line)
+    // 6. Draw Planned A* Navigation Route (Glowing Cyan Dashed Line)
     if (telemetryData && telemetryData.planned_path && telemetryData.planned_path.length > 0) {
       ctx.beginPath();
       const startPt = worldToCanvas(telemetryData.robot_pose.x, telemetryData.robot_pose.y);
       ctx.moveTo(startPt.x, startPt.y);
 
-      telemetryData.planned_path.forEach((wp) => {
+      telemetryData.planned_path.forEach(wp => {
         const p = worldToCanvas(wp.x, wp.y);
         ctx.lineTo(p.x, p.y);
       });
 
-      ctx.strokeStyle = 'rgba(6, 182, 212, 0.6)';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.75)';
+      ctx.lineWidth = 2.5;
       ctx.setLineDash([6, 6]);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // 6. Draw Dynamic Obstacle (Walking Human with Safety Zone)
+    // 7. Draw Dynamic Pedestrian Obstacle with Safety Halo
     if (telemetryData && telemetryData.dynamic_obstacle && telemetryData.dynamic_obstacle.active) {
       const obsPt = worldToCanvas(telemetryData.dynamic_obstacle.pose.x, telemetryData.dynamic_obstacle.pose.y);
 
-      // Avoidance Safety Margin Zone (1.2m radius)
-      const safetyRadius = (1.2 / 10.0) * CANVAS_SIZE;
+      // Avoidance Safety Margin Zone (1.3m radius)
+      const safetyRadius = (1.3 / (WORLD_MAX_X - WORLD_MIN_X)) * canvas.width;
       ctx.beginPath();
       ctx.arc(obsPt.x, obsPt.y, safetyRadius, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.08)';
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
       ctx.fill();
-      ctx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.45)';
       ctx.lineWidth = 1.5;
       ctx.setLineDash([4, 4]);
       ctx.stroke();
@@ -149,7 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Pedestrian Body
       ctx.beginPath();
-      ctx.arc(obsPt.x, obsPt.y, 14, 0, Math.PI * 2);
+      ctx.arc(obsPt.x, obsPt.y, 11, 0, Math.PI * 2);
       ctx.fillStyle = '#ef4444';
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
@@ -157,19 +295,21 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.stroke();
 
       ctx.fillStyle = '#ef4444';
-      ctx.font = 'bold 11px Inter';
-      ctx.fillText("🚶 Pedestrian", obsPt.x - 32, obsPt.y - 18);
+      ctx.font = 'bold 10px Inter';
+      ctx.fillText("🚶 Human Obstacle", obsPt.x - 38, obsPt.y - 16);
     }
 
-    // 7. Draw 3D Waiter Robot (Chassis, 3-Tier Shelves, Heading, Halo)
+    // 8. Draw BellaBot Service Robot (Accurate Orientation, Cat Ears, Halo, Trays)
     if (telemetryData && telemetryData.robot_pose) {
       const rPt = worldToCanvas(telemetryData.robot_pose.x, telemetryData.robot_pose.y);
-      const isAvoiding = telemetryData.avoidance_active || telemetryData.robot_state === "avoiding_obstacle" || telemetryData.robot_state === "yielding";
+      const isAvoiding = telemetryData.avoidance_active ||
+        telemetryData.robot_state === "avoiding_obstacle" ||
+        telemetryData.robot_state === "yielding";
 
-      // Evasive Maneuver Alert Ring
+      // Collision Evasive Ring
       if (isAvoiding) {
         ctx.beginPath();
-        ctx.arc(rPt.x, rPt.y, 30, 0, Math.PI * 2);
+        ctx.arc(rPt.x, rPt.y, 28, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
         ctx.fill();
         ctx.strokeStyle = '#ef4444';
@@ -177,44 +317,66 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.stroke();
       }
 
-      // Robot Base Chassis
       ctx.save();
       ctx.translate(rPt.x, rPt.y);
+      // Coordinate transform: robot yaw (ROS +X is forward, canvas Y is down)
       ctx.rotate(-telemetryData.robot_pose.yaw);
 
-      // Chassis body
+      // BellaBot Rounded Base Chassis
       ctx.beginPath();
-      ctx.ellipse(0, 0, 18, 16, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, 16, 14, 0, 0, Math.PI * 2);
       ctx.fillStyle = '#0f172a';
       ctx.fill();
       ctx.strokeStyle = isAvoiding ? '#ef4444' : '#06b6d4';
       ctx.lineWidth = 2.5;
       ctx.stroke();
 
-      // Draw 3-Tier Shelf Lines (Visualizing Waiter Tray Stack)
-      ctx.strokeStyle = '#94a3b8';
-      ctx.lineWidth = 1.5;
-      // Shelf 1
-      ctx.strokeRect(-8, -10, 14, 6);
-      // Shelf 2
-      ctx.strokeRect(-8, -3, 14, 6);
-      // Shelf 3
-      ctx.strokeRect(-8, 4, 14, 6);
+      // BellaBot 3-Tier Shelf Indicators
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(-7, -8, 11, 4);
+      ctx.strokeRect(-7, -2, 11, 4);
+      ctx.strokeRect(-7, 4, 11, 4);
 
-      // Heading indicator nose
+      // BellaBot Signature Cat Ears on Head (Facing Forward +X)
+      ctx.fillStyle = isAvoiding ? '#ef4444' : '#06b6d4';
+      // Left Ear
       ctx.beginPath();
-      ctx.moveTo(14, 0);
-      ctx.lineTo(24, 0);
-      ctx.strokeStyle = '#06b6d4';
+      ctx.moveTo(10, -8);
+      ctx.lineTo(16, -11);
+      ctx.lineTo(13, -5);
+      ctx.closePath();
+      ctx.fill();
+      // Right Ear
+      ctx.beginPath();
+      ctx.moveTo(10, 8);
+      ctx.lineTo(16, 11);
+      ctx.lineTo(13, 5);
+      ctx.closePath();
+      ctx.fill();
+
+      // BellaBot Front Touchscreen Display Face
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(8, -6, 4, 12);
+      ctx.strokeRect(8, -6, 4, 12);
+
+      // Forward Heading Glow Indicator
+      ctx.beginPath();
+      ctx.moveTo(13, 0);
+      ctx.lineTo(22, 0);
+      ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 3;
       ctx.stroke();
 
       ctx.restore();
 
-      // Robot Label
+      // Robot Label Badge
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 10px Inter';
-      ctx.fillText(isAvoiding ? "⚠️ AVOIDING" : "WAITER BOT", rPt.x - 28, rPt.y + 26);
+      const labelText = isAvoiding ? "⚠️ AVOIDING" : "🐱 BELLABOT";
+      ctx.fillText(labelText, rPt.x - 28, rPt.y + 24);
     }
 
     requestAnimationFrame(renderMap);
@@ -230,7 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ws.onopen = () => {
       document.getElementById('conn-text').textContent = 'Connected (Live)';
       document.querySelector('#connection-status .dot').className = 'dot online';
-      logSystem("WebSocket telemetry stream connected.", 'info');
+      logSystem("WebSocket live telemetry connected to BellaBot.", 'info');
     };
 
     ws.onmessage = (event) => {
@@ -291,24 +453,24 @@ document.addEventListener('DOMContentLoaded', () => {
     if (data.current_task) {
       document.getElementById('current-task-text').textContent = `${data.current_task.id} -> ${data.current_task.target} (${data.current_task.item})`;
     } else {
-      document.getElementById('current-task-text').textContent = 'None (Idle at Station)';
+      document.getElementById('current-task-text').textContent = 'None (Stationary / Idle)';
     }
 
-    // 5. Waiter 3-Tier Shelves Status
+    // 5. BellaBot 3-Tier Shelves Status
     if (data.shelves) {
       const s3 = data.shelves.shelf_3;
       const s2 = data.shelves.shelf_2;
       const s1 = data.shelves.shelf_1;
 
-      document.getElementById('shelf-3-item').textContent = s3.item ? `Loaded: ${s3.item}` : 'Empty / Ready';
-      document.getElementById('shelf-2-item').textContent = s2.item ? `Loaded: ${s2.item}` : 'Empty / Ready';
-      document.getElementById('shelf-1-item').textContent = s1.item ? `Loaded: ${s1.item}` : 'Empty / Ready';
+      document.getElementById('shelf-3-item').textContent = s3.item ? `Loaded: ${s3.item}` : 'Empty / Available';
+      document.getElementById('shelf-2-item').textContent = s2.item ? `Loaded: ${s2.item}` : 'Empty / Available';
+      document.getElementById('shelf-1-item').textContent = s1.item ? `Loaded: ${s1.item}` : 'Empty / Available';
     }
 
     // 6. Queue List UI
     const queueList = document.getElementById('queue-list');
     if (!data.queue || data.queue.length === 0) {
-      queueList.innerHTML = '<div class="empty-state">No active pending tasks in queue.</div>';
+      queueList.innerHTML = '<div class="empty-state">No pending deliveries in queue.</div>';
     } else {
       queueList.innerHTML = data.queue.map(item => `
         <div class="queue-item">
@@ -337,7 +499,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       const data = await res.json();
       if (res.ok) {
-        logSystem(`Delivery requested: ${data.task.id} to ${target} (${item})`, 'info');
+        logSystem(`Delivery dispatched: ${data.task.id} to ${target} (${item})`, 'info');
         document.getElementById('item-input').value = '';
       } else {
         logSystem(`Error: ${data.detail}`, 'warn');
@@ -350,9 +512,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Admin Manual Dock Button
   document.getElementById('manual-dock-btn').addEventListener('click', async () => {
     try {
-      const res = await fetch('/api/dock', { method: 'POST' });
-      const data = await res.json();
-      logSystem("Admin commanded Waiter Bot to return to Dock.", 'info');
+      await fetch('/api/dock', { method: 'POST' });
+      logSystem("Admin commanded BellaBot to return to Dock station.", 'info');
     } catch (err) {
       logSystem("Failed to send dock command.", 'warn');
     }
@@ -362,12 +523,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('toggle-obstacle-btn').addEventListener('click', async () => {
     dynamicObstacleActive = !dynamicObstacleActive;
     try {
-      const res = await fetch('/api/obstacle/trigger', {
+      await fetch('/api/obstacle/trigger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: dynamicObstacleActive })
       });
-      logSystem(`Dynamic pedestrian obstacle: ${dynamicObstacleActive ? 'ACTIVATED (Entering corridor)' : 'DEACTIVATED'}`, 'info');
+      logSystem(`Dynamic pedestrian obstacle: ${dynamicObstacleActive ? 'ACTIVATED in service corridor' : 'DEACTIVATED'}`, 'info');
     } catch (err) {
       logSystem("Failed to toggle dynamic obstacle.", 'warn');
     }
@@ -377,11 +538,20 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('clear-queue-btn').addEventListener('click', async () => {
     try {
       await fetch('/api/queue', { method: 'DELETE' });
-      logSystem("Task queue and shelves cleared by admin.", 'info');
+      logSystem("Task queue and trays cleared by admin.", 'info');
     } catch (err) {
       logSystem("Failed to clear task queue.", 'warn');
     }
   });
+
+  // Reset View Button
+  const resetBtn = document.getElementById('reset-view-btn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      adjustCanvasSize();
+      logSystem("Map view refreshed.", 'info');
+    });
+  }
 
   function logSystem(msg, type = 'system') {
     const logBox = document.getElementById('sys-log');
@@ -393,7 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
     logBox.scrollTop = logBox.scrollHeight;
   }
 
-  // Start Map Animation & WebSocket Connection
+  // Start Animation Loop & Connect WebSocket
   renderMap();
   connectWebSocket();
 });

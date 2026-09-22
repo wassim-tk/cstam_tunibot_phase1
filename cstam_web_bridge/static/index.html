@@ -14,10 +14,10 @@
   <!-- Top Header Navigation -->
   <header class="navbar">
     <div class="brand">
-      <div class="logo-icon">🤖</div>
+      <div class="logo-icon">🐱</div>
       <div class="brand-text">
-        <span class="brand-title">CSTAM WAITER BOT</span>
-        <span class="brand-subtitle">3-Tier Autonomous Food Delivery Robot</span>
+        <span class="brand-title">BELLABOT COMMAND CENTER</span>
+        <span class="brand-subtitle">3-Tier Autonomous Service Robot | Gazebo Restaurant Simulation</span>
       </div>
     </div>
 
@@ -51,13 +51,22 @@
 
       <form id="delivery-form" class="delivery-form">
         <div class="form-group">
-          <label for="target-select">Dining Destination</label>
+          <label for="target-select">Dining Destination (Gazebo Restaurant)</label>
           <select id="target-select" class="form-control" required>
-            <option value="Table 1">Table 1 (North Dining)</option>
-            <option value="Table 2">Table 2 (South Patio)</option>
-            <option value="Table 3">Table 3 (VIP Lounge)</option>
-            <option value="Kitchen/Pickup">Kitchen / Pickup Station</option>
+            <option value="Table 1">Table 1 (Central Dining - 0.34, -6.24)</option>
+            <option value="Table 2">Table 2 (South Patio - -10.67, -12.84)</option>
+            <option value="Table 3">Table 3 (South Patio - -10.71, -14.55)</option>
+            <option value="Table 4">Table 4 (South Patio - -10.63, -16.17)</option>
+            <option value="Table 6">Table 6 (West Wing - -8.28, -4.65)</option>
+            <option value="Table 8">Table 8 (West Wing - -8.23, -9.45)</option>
+            <option value="Table 10">Table 10 (Mid Lounge - -6.08, -6.31)</option>
+            <option value="Table 14">Table 14 (North Terrace - -8.02, 0.36)</option>
+            <option value="Table 18">Table 18 (West Entrance - -8.10, -1.74)</option>
+            <option value="Table 24">Table 24 (East Dining - 0.72, 1.45)</option>
+            <option value="Table 34">Table 34 (VIP Salon - 3.74, 3.01)</option>
+            <option value="Kitchen/Pickup">Kitchen & Pickup Station</option>
           </select>
+          <div style="font-size: 11px; color: var(--accent-cyan); margin-top: 6px;">💡 Tip: Click any table on the 2D map to auto-select destination!</div>
         </div>
 
         <div class="form-group">
@@ -66,25 +75,25 @@
         </div>
 
         <button type="submit" id="submit-btn" class="btn btn-primary btn-block">
-          <span>🚀 Dispatch Delivery to Waiter Bot</span>
+          <span>🚀 Dispatch Delivery to BellaBot</span>
         </button>
       </form>
 
       <!-- 3-Tier Food Shelves Live Status -->
       <div class="shelves-container" style="margin-top: 20px;">
-        <h3>🍽️ Waiter Robot Serving Shelves</h3>
+        <h3>🐱 BellaBot 3-Tier Serving Shelves</h3>
         <div class="shelves-list" id="shelves-display" style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
           <div class="shelf-card" id="shelf-3-card" style="padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 8px;">
             <div style="font-weight: 600; font-size: 12px; color: var(--accent-cyan);">☕ Tier 3 (Upper Tray): Drinks & Cups</div>
-            <div id="shelf-3-item" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Empty</div>
+            <div id="shelf-3-item" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Empty / Ready</div>
           </div>
           <div class="shelf-card" id="shelf-2-card" style="padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 8px;">
-            <div style="font-weight: 600; font-size: 12px; color: var(--accent-amber);">🍲 Tier 2 (Middle Tray): Hot Dishes</div>
-            <div id="shelf-2-item" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Empty</div>
+            <div style="font-weight: 600; font-size: 12px; color: var(--accent-amber);">🍲 Tier 2 (Middle Tray): Hot Dishes & Mains</div>
+            <div id="shelf-2-item" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Empty / Ready</div>
           </div>
           <div class="shelf-card" id="shelf-1-card" style="padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 8px;">
-            <div style="font-weight: 600; font-size: 12px; color: var(--accent-blue);">🥗 Tier 1 (Lower Tray): Heavy Trays</div>
-            <div id="shelf-1-item" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Empty</div>
+            <div style="font-weight: 600; font-size: 12px; color: var(--accent-blue);">🥗 Tier 1 (Lower Tray): Heavy Dishes & Platters</div>
+            <div id="shelf-1-item" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Empty / Ready</div>
           </div>
         </div>
       </div>
@@ -100,7 +109,7 @@
     <!-- Center Column: 2D Canvas Map Visualization -->
     <section class="panel map-panel">
       <div class="panel-header">
-        <h2>🗺️ 2D Navigation Map (Doorway & Obstacle Avoidance)</h2>
+        <h2>🗺️ 2D Gazebo Restaurant Map (41 Tables & Corridors)</h2>
         <div class="map-controls">
           <span id="avoidance-badge" style="display: none; padding: 4px 10px; background: #ef4444; border-radius: 12px; font-size: 11px; font-weight: 600; color: white;">⚠️ AVOIDING OBSTACLE</span>
           <button id="reset-view-btn" class="btn btn-sm btn-outline">Reset View</button>
@@ -108,13 +117,13 @@
       </div>
 
       <div class="canvas-wrapper">
-        <canvas id="map-canvas" width="600" height="600"></canvas>
+        <canvas id="map-canvas" width="650" height="625"></canvas>
 
         <div class="map-legend">
-          <div class="legend-item"><span class="legend-dot robot-dot"></span> Waiter Bot</div>
+          <div class="legend-item"><span class="legend-dot robot-dot"></span> BellaBot</div>
           <div class="legend-item"><span class="legend-dot dock-dot"></span> Dock Station</div>
-          <div class="legend-item"><span class="legend-dot target-dot"></span> Table / Pickup</div>
-          <div class="legend-item"><span class="legend-dot obstacle-dot"></span> Walking Human</div>
+          <div class="legend-item"><span class="legend-dot target-dot"></span> Dining Tables (41)</div>
+          <div class="legend-item"><span class="legend-dot obstacle-dot"></span> Dynamic Human</div>
         </div>
       </div>
     </section>

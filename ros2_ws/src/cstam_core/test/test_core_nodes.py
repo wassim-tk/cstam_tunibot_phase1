@@ -26,6 +26,24 @@ class TestCstamCoreNodes(unittest.TestCase):
         sim.update(dt=2.0)
         self.assertEqual(sim.percentage, 108.0 > 100.0 and 100.0)
 
+    def test_battery_simulator_physical_mode(self):
+        sim = BatterySimulator(initial_percentage=100.0, time_scale=1.0)
+        self.assertEqual(sim.mode, "physical")
+        self.assertEqual(sim.percentage, 100.0)
+        self.assertGreater(sim.voltage, 28.0)
+
+        # Idle discharge
+        sim.is_moving = False
+        sim.is_docked = False
+        sim.update(dt=10.0)
+        self.assertLessEqual(sim.percentage, 100.0)
+        self.assertGreater(sim.current, 0.0)
+
+        # Cruise discharge
+        sim.is_moving = True
+        sim.update(dt=10.0)
+        self.assertGreater(sim.power, 100.0)
+
     def test_task_queue_manager(self):
         mgr = TaskQueueManager(low_battery_threshold=20.0)
         

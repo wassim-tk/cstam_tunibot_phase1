@@ -47,7 +47,7 @@ def main():
     server_thread.start()
     
     # Wait for server startup
-    for attempt in range(10):
+    for attempt in range(25):
         try:
             h = http_get("/api/health")
             if h.get("status") == "ok":

@@ -12,7 +12,7 @@ class TestCstamWebBridge(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["status"], "ok")
-        self.assertEqual(data["service"], "CSTAM Web Bridge")
+        self.assertEqual(data["service"], "CSTAM Waiter Robot Web Bridge")
 
     def test_waypoints_endpoint(self):
         response = self.client.get("/api/waypoints")

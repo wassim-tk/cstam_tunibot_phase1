@@ -1,0 +1,10 @@
+{
+  "extraPaths": [
+    "/opt/ros/jazzy/lib/python3.12/site-packages",
+    "/home/ros2/cstam/cstan_tunibot/ros2_ws/install/cstam_core/lib/python3.12/site-packages",
+    "/home/ros2/cstam/cstan_tunibot/ros2_ws/install/cstam_gazebo/lib/python3.12/site-packages",
+    "/home/ros2/cstam/cstan_tunibot/ros2_ws/install/cstam_navigation/lib/python3.12/site-packages",
+    "/home/ros2/cstam/cstan_tunibot/ros2_ws/src/cstam_core",
+    "/home/ros2/cstam/cstan_tunibot/cstam_web_bridge"
+  ]
+}

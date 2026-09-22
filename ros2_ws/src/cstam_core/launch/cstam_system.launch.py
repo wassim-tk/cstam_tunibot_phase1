@@ -1,4 +1,5 @@
 import os
+from typing import Any, List
 from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, LogInfo
@@ -33,11 +34,47 @@ def generate_launch_description():
         description='Launch Nav2 navigation stack (requires ros-jazzy-nav2-bringup)'
     )
 
+    launch_world_arg = DeclareLaunchArgument(
+        'world',
+        default_value='restaurant.world',
+        description='World file name (in worlds/ directory) or absolute path'
+    )
+
+    launch_use_sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='true',
+        description='Use simulation (Gazebo) clock if true'
+    )
+
+    launch_spawn_x_arg = DeclareLaunchArgument(
+        'spawn_x',
+        default_value='-14.0',
+        description='X coordinate for robot spawn'
+    )
+
+    launch_spawn_y_arg = DeclareLaunchArgument(
+        'spawn_y',
+        default_value='-2.0',
+        description='Y coordinate for robot spawn'
+    )
+
+    launch_spawn_z_arg = DeclareLaunchArgument(
+        'spawn_z',
+        default_value='0.1',
+        description='Z coordinate for robot spawn'
+    )
+
     # 1. Gazebo + Robot Spawn Launch (Modern Gazebo / Gz Sim)
     gazebo_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_cstam_gazebo, 'launch', 'spawn_cstam_robot.launch.py')
         ),
+        launch_arguments={
+            'world': LaunchConfiguration('world'),
+            'spawn_x': LaunchConfiguration('spawn_x'),
+            'spawn_y': LaunchConfiguration('spawn_y'),
+            'spawn_z': LaunchConfiguration('spawn_z'),
+        }.items(),
         condition=IfCondition(LaunchConfiguration('launch_gazebo'))
     )
 
@@ -54,6 +91,7 @@ def generate_launch_description():
         package='cstam_core',
         executable='battery_simulator',
         name='battery_simulator',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
         output='screen'
     )
 
@@ -62,6 +100,7 @@ def generate_launch_description():
         package='cstam_core',
         executable='delivery_task_manager',
         name='delivery_task_manager',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
         output='screen'
     )
 
@@ -70,12 +109,18 @@ def generate_launch_description():
         package='cstam_core',
         executable='docking_controller',
         name='docking_controller',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
         output='screen'
     )
 
-    launch_items = [
+    launch_items: List[Any] = [
+        launch_world_arg,
         launch_gazebo_arg,
         launch_nav_arg,
+        launch_use_sim_time_arg,
+        launch_spawn_x_arg,
+        launch_spawn_y_arg,
+        launch_spawn_z_arg,
         gazebo_launch,
         nav_launch,
         battery_sim_node,
