@@ -52,6 +52,22 @@ class TestCstamWebBridge(unittest.TestCase):
         self.assertTrue(res.json()["success"])
         self.assertEqual(res.json()["battery_percentage"], 15.0)
 
+    def test_dock_charge_option(self):
+        # 1. Get dock charge option
+        get_res = self.client.get("/api/dock/charge_option")
+        self.assertEqual(get_res.status_code, 200)
+        self.assertIn("auto_charge_at_dock", get_res.json())
+
+        # 2. Toggle dock charge option
+        post_res = self.client.post("/api/dock/charge_option", json={"auto_charge": True})
+        self.assertEqual(post_res.status_code, 200)
+        self.assertTrue(post_res.json()["auto_charge_at_dock"])
+
+        # 3. Trigger start charge at dock
+        charge_res = self.client.post("/api/dock/start_charge")
+        self.assertEqual(charge_res.status_code, 200)
+        self.assertTrue(charge_res.json()["success"])
+
 
 if __name__ == '__main__':
     unittest.main()

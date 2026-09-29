@@ -384,6 +384,18 @@ document.addEventListener('DOMContentLoaded', () => {
         telemetryData.robot_state === "avoiding_obstacle" ||
         telemetryData.robot_state === "yielding";
 
+      // Charging Pulse Halo when in dock
+      if (telemetryData.charging_active || telemetryData.robot_state === "charging") {
+        ctx.beginPath();
+        const pulse = (Math.sin(Date.now() / 250) + 1) * 3;
+        ctx.arc(rPt.x, rPt.y, (24 + pulse) * zoomLevel, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.22)';
+        ctx.fill();
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2 * zoomLevel;
+        ctx.stroke();
+      }
+
       // Collision Evasive Ring
       if (isAvoiding) {
         ctx.beginPath();
@@ -493,26 +505,44 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateDashboardUI(data) {
     // 1. Physical Battery BMS Metrics
     const batPct = data.battery_percentage;
-    document.getElementById('battery-pct-text').textContent = `${batPct.toFixed(1)}%`;
+    const isCharging = data.charging_active || data.robot_state === "charging";
+
+    if (isCharging) {
+      document.getElementById('battery-pct-text').innerHTML = `⚡ ${batPct.toFixed(1)}% <span style="font-size:10px;color:#10b981;font-weight:600;">(Charging)</span>`;
+      document.getElementById('battery-fill').style.background = '#10b981';
+      document.getElementById('battery-fill').style.boxShadow = '0 0 10px rgba(16, 185, 129, 0.8)';
+    } else {
+      document.getElementById('battery-pct-text').textContent = `${batPct.toFixed(1)}%`;
+      document.getElementById('battery-fill').style.boxShadow = 'none';
+      if (batPct < 20) {
+        document.getElementById('battery-fill').style.background = '#ef4444';
+      } else if (batPct < 50) {
+        document.getElementById('battery-fill').style.background = '#f59e0b';
+      } else {
+        document.getElementById('battery-fill').style.background = '#10b981';
+      }
+    }
+
     document.getElementById('battery-fill').style.width = `${batPct}%`;
     document.getElementById('battery-voltage-text').textContent = `${data.voltage.toFixed(2)} V`;
-    document.getElementById('battery-current-text').textContent = `${(data.current_amps || 0).toFixed(2)} A`;
+    document.getElementById('battery-current-text').textContent = `${(data.current_amps || 0).toFixed(2)} A${isCharging ? ' (Charging)' : ''}`;
     document.getElementById('battery-power-text').textContent = `${(data.power_watts || 0).toFixed(1)} W`;
     document.getElementById('battery-temp-text').textContent = `${(data.temperature_c || 24.5).toFixed(1)} °C`;
 
-    if (batPct < 20) {
-      document.getElementById('battery-fill').style.background = '#ef4444';
-    } else if (batPct < 50) {
-      document.getElementById('battery-fill').style.background = '#f59e0b';
-    } else {
-      document.getElementById('battery-fill').style.background = '#10b981';
-    }
-
     // 2. Robot State & Avoidance Badge
-    const stateText = (data.robot_state || "IDLE").toUpperCase();
+    let stateText = (data.robot_state || "IDLE").toUpperCase();
+    if (isCharging) {
+      stateText = "⚡ CHARGING (DOCKED)";
+    }
     document.getElementById('robot-state-text').textContent = stateText;
     const dot = document.querySelector('#robot-state-badge .dot');
-    dot.className = `dot ${data.robot_state || 'idle'}`;
+    dot.className = isCharging ? 'dot charging' : `dot ${data.robot_state || 'idle'}`;
+
+    // Sync Auto-Charge toggle switch if not actively focused
+    const autoChargeToggle = document.getElementById('auto-charge-toggle');
+    if (autoChargeToggle && data.auto_charge_at_dock !== undefined && document.activeElement !== autoChargeToggle) {
+      autoChargeToggle.checked = Boolean(data.auto_charge_at_dock);
+    }
 
     const avoidBadge = document.getElementById('avoidance-badge');
     if (data.avoidance_active || data.robot_state === "avoiding_obstacle" || data.robot_state === "yielding") {
@@ -586,6 +616,38 @@ document.addEventListener('DOMContentLoaded', () => {
       logSystem(`Network error submitting delivery`, 'warn');
     }
   });
+
+  // Auto-Charge at Dock Switch Listener
+  const autoChargeToggleEl = document.getElementById('auto-charge-toggle');
+  if (autoChargeToggleEl) {
+    autoChargeToggleEl.addEventListener('change', async (e) => {
+      try {
+        const res = await fetch('/api/dock/charge_option', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ auto_charge: e.target.checked })
+        });
+        const data = await res.json();
+        logSystem(`Auto-Charge at Dock option: ${data.auto_charge_at_dock ? 'ENABLED (robot automatically charges when in dock)' : 'DISABLED'}`, 'info');
+      } catch (err) {
+        logSystem("Failed to update auto-charge setting.", 'warn');
+      }
+    });
+  }
+
+  // Start Charging at Dock Button Listener
+  const startChargeBtn = document.getElementById('start-charge-btn');
+  if (startChargeBtn) {
+    startChargeBtn.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/dock/start_charge', { method: 'POST' });
+        const data = await res.json();
+        logSystem(data.message, 'info');
+      } catch (err) {
+        logSystem("Failed to command charging at dock.", 'warn');
+      }
+    });
+  }
 
   // Admin Manual Dock Button
   document.getElementById('manual-dock-btn').addEventListener('click', async () => {

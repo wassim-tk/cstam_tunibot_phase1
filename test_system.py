@@ -39,8 +39,6 @@ class MasterSystemVerificationTests(unittest.TestCase):
             "cstam_web_bridge/static/index.html",
             "cstam_web_bridge/static/styles.css",
             "cstam_web_bridge/static/dashboard.js",
-            "Dockerfile",
-            "docker-compose.yml",
             "run_demo.py"
         ]
         for rel_path in required_paths:

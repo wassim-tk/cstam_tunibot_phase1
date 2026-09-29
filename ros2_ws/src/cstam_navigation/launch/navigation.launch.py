@@ -29,7 +29,14 @@ def generate_launch_description():
             'map': map_yaml_file,
             'params_file': nav2_params_file,
             'use_sim_time': 'true',
-            'autostart': 'true'
+            'autostart': 'true',
+            'use_composition': 'True',
+            'use_respawn': 'False',
+            'use_namespace': 'false',
+            'namespace': '',
+            'slam': 'False',
+            'use_localization': 'True',
+            'log_level': 'info',
         }.items()
     )
 

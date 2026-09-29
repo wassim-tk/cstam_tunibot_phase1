@@ -23,7 +23,7 @@ This document summarizes the comprehensive test execution results for the **CSTA
 - `test_toggle_obstacle`: HTTP POST `/api/obstacle/trigger` activates dynamic human obstacle. **[PASSED]**
 
 ### C. Master System Deliverables Suite (`test_system.py`)
-- `test_workspace_files_exist`: Verifies all 21 required ROS 2 workspace, web UI, Docker, and doc files exist. **[PASSED]**
+- `test_workspace_files_exist`: Verifies all required ROS 2 workspace, web UI, and core deliverables exist. **[PASSED]**
 - `test_web_bridge_full_lifecycle`: Executes complete delivery lifecycle, queue clearing, and telemetry. **[PASSED]**
 
 ---

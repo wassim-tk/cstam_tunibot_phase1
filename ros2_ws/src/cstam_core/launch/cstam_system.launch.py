@@ -21,10 +21,22 @@ def generate_launch_description():
 
     default_nav = 'true' if nav2_available else 'false'
 
+    # Detect if Gazebo & xacro dependencies are installed
+    try:
+        import xacro  # noqa: F401
+        get_package_share_directory('ros_gz_sim')
+        get_package_share_directory('ros_gz_bridge')
+        gazebo_available = True
+    except (ImportError, PackageNotFoundError):
+        gazebo_available = False
+
+    default_gazebo = 'true' if gazebo_available else 'false'
+    default_sim_time = 'true' if gazebo_available else 'false'
+
     # Declare Launch Arguments
     launch_gazebo_arg = DeclareLaunchArgument(
         'launch_gazebo',
-        default_value='true',
+        default_value=default_gazebo,
         description='Launch Gazebo Sim (Harmonic) simulation'
     )
 
@@ -42,7 +54,7 @@ def generate_launch_description():
 
     launch_use_sim_time_arg = DeclareLaunchArgument(
         'use_sim_time',
-        default_value='true',
+        default_value=default_sim_time,
         description='Use simulation (Gazebo) clock if true'
     )
 
@@ -70,12 +82,12 @@ def generate_launch_description():
             os.path.join(pkg_cstam_gazebo, 'launch', 'spawn_cstam_robot.launch.py')
         ),
         launch_arguments={
-            'world': LaunchConfiguration('world'),
-            'spawn_x': LaunchConfiguration('spawn_x'),
-            'spawn_y': LaunchConfiguration('spawn_y'),
-            'spawn_z': LaunchConfiguration('spawn_z'),
+            'world': LaunchConfiguration('world', default='restaurant.world'),
+            'spawn_x': LaunchConfiguration('spawn_x', default='-14.0'),
+            'spawn_y': LaunchConfiguration('spawn_y', default='-2.0'),
+            'spawn_z': LaunchConfiguration('spawn_z', default='0.1'),
         }.items(),
-        condition=IfCondition(LaunchConfiguration('launch_gazebo'))
+        condition=IfCondition(LaunchConfiguration('launch_gazebo', default=default_gazebo))
     )
 
     # 2. Navigation Launch (Nav2 + Map Server)
@@ -83,7 +95,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(pkg_cstam_navigation, 'launch', 'navigation.launch.py')
         ),
-        condition=IfCondition(LaunchConfiguration('launch_nav'))
+        condition=IfCondition(LaunchConfiguration('launch_nav', default=default_nav))
     )
 
     # 3. Battery Simulator Node
@@ -127,6 +139,14 @@ def generate_launch_description():
         task_manager_node,
         docking_controller_node
     ]
+
+    if not gazebo_available:
+        launch_items.insert(0, LogInfo(
+            msg="[CSTAM NOTICE] Gazebo simulation dependencies ('xacro', 'ros_gz_sim', 'ros_gz_bridge') "
+                "are not installed; skipping Gazebo bringup. "
+                "To enable 3D simulation and robot spawning, install: "
+                "sudo apt update && sudo apt install -y ros-jazzy-xacro ros-jazzy-ros-gz"
+        ))
 
     if not nav2_available:
         launch_items.insert(2, LogInfo(

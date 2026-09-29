@@ -28,18 +28,11 @@ python3 cstam_web_bridge/app.py
 # Open: http://localhost:8000
 ```
 
-### Option 2: Single-Command Docker Deployment (Containerized Environment)
-
-```bash
-# Build and bring up the complete containerized environment
-docker-compose up --build
-```
-
-### Option 3: Automated Demo Validation Pass
+### Option 2: Automated Demo Validation Pass
 
 ```bash
 # Runs complete end-to-end demo script (submits deliveries, triggers obstacle, simulates battery preemption)
-python run_demo.py
+python3 run_demo.py
 ```
 
 ---

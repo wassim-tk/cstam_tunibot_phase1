@@ -33,6 +33,44 @@ task_manager = TaskQueueManager()
 battery_sim = BatterySimulator(initial_percentage=100.0, time_scale=20.0)
 dock_controller = AutoDockingController(idle_timeout=15.0, low_battery_threshold=20.0, full_charge_threshold=90.0)
 
+# Optional ROS 2 Real-Time Bridge to Gazebo Sim /cmd_vel
+try:
+    import rclpy
+    from geometry_msgs.msg import Twist
+    HAVE_ROS2 = True
+except ImportError:
+    HAVE_ROS2 = False
+
+_ros_node = None
+_cmd_vel_pub = None
+
+def init_ros2_bridge():
+    global _ros_node, _cmd_vel_pub
+    if not HAVE_ROS2:
+        return
+    try:
+        if not rclpy.ok():
+            rclpy.init()
+        _ros_node = rclpy.create_node('cstam_web_bridge_motion')
+        _cmd_vel_pub = _ros_node.create_publisher(Twist, '/cmd_vel', 10)
+        import threading
+        ros_thread = threading.Thread(target=lambda: rclpy.spin(_ros_node), daemon=True)
+        ros_thread.start()
+        print("✔ Connected to ROS 2: /cmd_vel commands will drive 3D robot in Gazebo")
+    except Exception as e:
+        print(f"Notice: Running web bridge in standalone simulation mode ({e})")
+
+def publish_cmd_vel(linear_x: float, angular_z: float):
+    global _cmd_vel_pub
+    if _cmd_vel_pub is not None:
+        try:
+            msg = Twist()
+            msg.linear.x = float(linear_x)
+            msg.angular.z = float(angular_z)
+            _cmd_vel_pub.publish(msg)
+        except Exception:
+            pass
+
 import heapq
 try:
     import numpy as np
@@ -87,6 +125,7 @@ dynamic_obstacle_pose = {"x": -14.0, "y": 0.0}
 dynamic_obstacle_target = {"x": -8.0, "y": -4.0}
 current_route_waypoints = []
 active_avoidance = False
+auto_charge_at_dock = True  # Option: When robot is at the dock, it automatically starts charging
 
 # BellaBot 3-Tier Shelf Trays
 shelves_state: Dict[str, Dict[str, Any]] = {
@@ -106,6 +145,9 @@ class QueueCancelRequest(BaseModel):
 
 class ObstacleToggleRequest(BaseModel):
     active: bool
+
+class DockChargeOptionRequest(BaseModel):
+    auto_charge: Optional[bool] = None
 
 
 # WebSocket Connection Manager
@@ -271,13 +313,36 @@ async def simulation_telemetry_loop():
                 dynamic_obstacle_pose["x"] = round(dynamic_obstacle_pose["x"] + step_obs * math.cos(angle_obs), 2)
                 dynamic_obstacle_pose["y"] = round(dynamic_obstacle_pose["y"] + step_obs * math.sin(angle_obs), 2)
 
+        # Check if robot is physically at or near the Dock station
+        dock_wp = DEFAULT_WAYPOINTS["Dock"]
+        dist_to_dock = math.hypot(robot_pose["x"] - dock_wp["x"], robot_pose["y"] - dock_wp["y"])
+        is_at_dock = (dist_to_dock < 1.0) or (math.hypot(robot_pose["x"] - (-14.0), robot_pose["y"] - (-2.0)) < 1.0)
+
         # 2. Update Physical Battery State
         is_moving = task_manager.robot_state in ["navigating", "en_route", "docking", "avoiding_obstacle"]
         battery_sim.is_moving = is_moving
-        battery_sim.is_docked = (task_manager.robot_state == "docked")
+
+        # Option: When the robot is in the dock, start charging if auto_charge_at_dock is enabled
+        if is_at_dock and not is_moving:
+            if auto_charge_at_dock:
+                battery_sim.is_docked = True
+                if task_manager.robot_state not in ["charging", "docked"]:
+                    task_manager.robot_state = "charging" if battery_sim.percentage < 99.9 else "docked"
+            else:
+                battery_sim.is_docked = (task_manager.robot_state in ["docked", "charging"])
+        else:
+            battery_sim.is_docked = False
+
         battery_sim.is_accelerating = active_avoidance
         curr_bat = battery_sim.update(dt=dt)
         task_manager.update_battery(curr_bat)
+
+        # Update charging state when docked and auto_charge enabled
+        if is_at_dock and not is_moving and auto_charge_at_dock:
+            if curr_bat >= 100.0:
+                task_manager.robot_state = "docked"
+            elif task_manager.robot_state not in ["navigating", "docking"]:
+                task_manager.robot_state = "charging"
 
         # 3. Check for Low Battery Auto-Dock Preemption (< 20%)
         if curr_bat < dock_controller.low_battery_threshold and task_manager.robot_state not in ["docked", "charging", "docking"]:
@@ -362,6 +427,15 @@ async def simulation_telemetry_loop():
                         robot_pose["x"] += step * math.cos(desired_angle)
                         robot_pose["y"] += step * math.sin(desired_angle)
                         robot_pose["yaw"] = desired_angle
+
+                        # Transmit motion velocity to Gazebo 3D simulation /cmd_vel
+                        angle_diff = (desired_angle - robot_pose["yaw"] + math.pi) % (2 * math.pi) - math.pi
+                        if abs(angle_diff) > 0.35:
+                            publish_cmd_vel(0.08, max(-1.0, min(1.0, 2.0 * angle_diff)))
+                        else:
+                            publish_cmd_vel(min(0.5, step / dt), max(-1.0, min(1.0, 1.5 * angle_diff)))
+                    else:
+                        publish_cmd_vel(0.0, 0.0)
                 else:
                     # Waypoint reached, advance to next segment
                     current_route_waypoints.pop(0)
@@ -370,19 +444,32 @@ async def simulation_telemetry_loop():
                     if not current_route_waypoints:
                         robot_pose["x"] = target_wp["x"]
                         robot_pose["y"] = target_wp["y"]
+                        publish_cmd_vel(0.0, 0.0)
 
                         if target_name == "Dock":
-                            task_manager.robot_state = "docked"
                             clear_shelves()
-                            if curr_bat >= dock_controller.full_charge_threshold:
+                            if auto_charge_at_dock and curr_bat < 99.9:
+                                task_manager.robot_state = "charging"
+                            else:
+                                task_manager.robot_state = "docked"
+
+                            if curr_bat >= dock_controller.full_charge_threshold and task_manager.queue:
                                 task_manager.complete_current_task(success=True)
                                 task_manager.robot_state = "idle"
+                            elif curr_bat >= 99.9:
+                                task_manager.complete_current_task(success=True)
                         else:
                             task_manager.complete_current_task(success=True)
                             clear_shelves()
                             task_manager.robot_state = "idle"
         else:
-            if task_manager.robot_state not in ["docked", "charging"]:
+            publish_cmd_vel(0.0, 0.0)
+            if is_at_dock and not is_moving:
+                if auto_charge_at_dock and curr_bat < 99.9:
+                    task_manager.robot_state = "charging"
+                else:
+                    task_manager.robot_state = "docked"
+            elif task_manager.robot_state not in ["docked", "charging"]:
                 task_manager.robot_state = "idle"
 
         # 6. Broadcast Comprehensive Live Telemetry
@@ -396,6 +483,10 @@ async def simulation_telemetry_loop():
             "power_watts": round(battery_sim.power, 1),
             "temperature_c": round(battery_sim.temperature, 1),
             "robot_state": task_manager.robot_state,
+            "is_docked": battery_sim.is_docked,
+            "is_at_dock": is_at_dock,
+            "auto_charge_at_dock": auto_charge_at_dock,
+            "charging_active": battery_sim.is_docked and curr_bat < 100.0,
             "avoidance_active": active_avoidance,
             "current_task": task_manager.current_task,
             "shelves": shelves_state,
@@ -417,8 +508,10 @@ async def simulation_telemetry_loop():
 # Lifespan Context Manager
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
+    init_ros2_bridge()
     sim_task = asyncio.create_task(simulation_telemetry_loop())
     yield
+    publish_cmd_vel(0.0, 0.0)
     sim_task.cancel()
 
 app = FastAPI(
@@ -435,6 +528,9 @@ def get_health():
 
 @app.get("/api/status")
 def get_status():
+    dock_wp = DEFAULT_WAYPOINTS["Dock"]
+    dist_to_dock = math.hypot(robot_pose["x"] - dock_wp["x"], robot_pose["y"] - dock_wp["y"])
+    is_at_dock = (dist_to_dock < 1.0) or (math.hypot(robot_pose["x"] - (-14.0), robot_pose["y"] - (-2.0)) < 1.0)
     return {
         "robot_pose": robot_pose,
         "battery_percentage": round(battery_sim.percentage, 1),
@@ -442,11 +538,71 @@ def get_status():
         "current_amps": round(abs(battery_sim.current), 2),
         "power_watts": round(battery_sim.power, 1),
         "robot_state": task_manager.robot_state,
+        "is_docked": battery_sim.is_docked,
+        "is_at_dock": is_at_dock,
+        "auto_charge_at_dock": auto_charge_at_dock,
+        "charging_active": battery_sim.is_docked and battery_sim.percentage < 100.0,
         "current_task": task_manager.current_task,
         "shelves": shelves_state,
         "queue_length": len(task_manager.queue),
         "waypoints": list(DEFAULT_WAYPOINTS.keys())
     }
+
+@app.get("/api/dock/charge_option")
+def get_dock_charge_option():
+    dock_wp = DEFAULT_WAYPOINTS["Dock"]
+    dist_to_dock = math.hypot(robot_pose["x"] - dock_wp["x"], robot_pose["y"] - dock_wp["y"])
+    is_at_dock = (dist_to_dock < 1.0) or (math.hypot(robot_pose["x"] - (-14.0), robot_pose["y"] - (-2.0)) < 1.0)
+    return {
+        "auto_charge_at_dock": auto_charge_at_dock,
+        "is_docked": battery_sim.is_docked,
+        "is_at_dock": is_at_dock,
+        "robot_state": task_manager.robot_state,
+        "battery_percentage": round(battery_sim.percentage, 1)
+    }
+
+@app.post("/api/dock/charge_option")
+def set_dock_charge_option(req: Optional[DockChargeOptionRequest] = None):
+    global auto_charge_at_dock
+    if req and req.auto_charge is not None:
+        auto_charge_at_dock = req.auto_charge
+    else:
+        auto_charge_at_dock = not auto_charge_at_dock
+
+    dock_wp = DEFAULT_WAYPOINTS["Dock"]
+    dist_to_dock = math.hypot(robot_pose["x"] - dock_wp["x"], robot_pose["y"] - dock_wp["y"])
+    is_at_dock = (dist_to_dock < 1.0) or (math.hypot(robot_pose["x"] - (-14.0), robot_pose["y"] - (-2.0)) < 1.0)
+
+    if is_at_dock:
+        battery_sim.is_docked = auto_charge_at_dock
+        if auto_charge_at_dock and battery_sim.percentage < 99.9:
+            task_manager.robot_state = "charging"
+        elif task_manager.robot_state == "charging":
+            task_manager.robot_state = "docked"
+
+    return {
+        "success": True,
+        "auto_charge_at_dock": auto_charge_at_dock,
+        "is_docked": battery_sim.is_docked,
+        "is_at_dock": is_at_dock,
+        "robot_state": task_manager.robot_state,
+        "battery_percentage": round(battery_sim.percentage, 1)
+    }
+
+@app.post("/api/dock/start_charge")
+def start_dock_charge():
+    dock_wp = DEFAULT_WAYPOINTS["Dock"]
+    dist_to_dock = math.hypot(robot_pose["x"] - dock_wp["x"], robot_pose["y"] - dock_wp["y"])
+    is_at_dock = (dist_to_dock < 1.0) or (math.hypot(robot_pose["x"] - (-14.0), robot_pose["y"] - (-2.0)) < 1.0)
+
+    if not is_at_dock:
+        # If not at dock, trigger return to dock
+        task_manager.add_delivery_request("Dock", "Admin: Return to Dock to Charge")
+        return {"success": True, "message": "Robot is not in the dock. Returning to Dock to start charging.", "robot_state": "docking"}
+
+    battery_sim.is_docked = True
+    task_manager.robot_state = "charging"
+    return {"success": True, "message": "Charging initiated at dock.", "robot_state": "charging", "battery_percentage": round(battery_sim.percentage, 1)}
 
 @app.get("/api/waypoints")
 def get_waypoints():
