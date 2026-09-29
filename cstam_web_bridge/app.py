@@ -118,14 +118,19 @@ def init_navigation_map():
 
 init_navigation_map()
 
-# Simulated Waiter Robot State Variables (Spawned at Dock in West Service Hallway)
-robot_pose = {"x": -14.0, "y": -2.0, "yaw": 0.0}
+# Simulated Waiter Robot State Variables (Spawned at Dock in South-East Bay)
+robot_pose = {"x": 7.06, "y": -12.0, "yaw": 1.57}
 dynamic_obstacle_active = False
-dynamic_obstacle_pose = {"x": -14.0, "y": 0.0}
-dynamic_obstacle_target = {"x": -8.0, "y": -4.0}
+dynamic_obstacle_pose = {"x": 0.0, "y": -4.0}
+dynamic_obstacle_target = {"x": -4.0, "y": -2.0}
 current_route_waypoints = []
 active_avoidance = False
 auto_charge_at_dock = True  # Option: When robot is at the dock, it automatically starts charging
+
+def check_is_at_dock(threshold: float = 1.2) -> bool:
+    dock_wp = DEFAULT_WAYPOINTS.get("Dock", {"x": 7.06, "y": -12.79})
+    dist = math.hypot(robot_pose["x"] - dock_wp["x"], robot_pose["y"] - dock_wp["y"])
+    return dist < threshold
 
 # BellaBot 3-Tier Shelf Trays
 shelves_state: Dict[str, Dict[str, Any]] = {
@@ -281,12 +286,11 @@ def clear_shelves():
 
 async def simulation_telemetry_loop():
     """
-    Continuous background loop:
-    1. Realistic physical battery modeling (OCV, load sag, CC-CV charge).
-    2. Dynamic obstacle animation.
-    3. Collision-avoiding doorway navigation.
-    4. Dynamic pedestrian avoidance / yielding.
-    5. Live WebSocket state broadcast.
+    Main floor simulation and telemetry broadcaster:
+    - Steps physical battery cell simulation (load current, voltage sag, CC-CV charging)
+    - Animates dining guest obstacle roaming and evasive yielding
+    - Executes collision-free corridor path following to delivery targets
+    - Broadcasts live state at 2.5 Hz over WebSockets
     """
     global robot_pose, dynamic_obstacle_active, dynamic_obstacle_pose, current_route_waypoints, active_avoidance
 
@@ -296,7 +300,7 @@ async def simulation_telemetry_loop():
     while True:
         await asyncio.sleep(dt)
 
-        # 1. Update Dynamic Obstacle (Walking Human roaming randomly all over the map)
+        # 1. Update roaming guest position across dining aisles
         if dynamic_obstacle_active:
             dx_obs = dynamic_obstacle_target["x"] - dynamic_obstacle_pose["x"]
             dy_obs = dynamic_obstacle_target["y"] - dynamic_obstacle_pose["y"]
@@ -304,8 +308,8 @@ async def simulation_telemetry_loop():
 
             if dist_to_obs_target < 0.4:
                 # Arrived at waypoint, select a new random destination across the restaurant floor
-                dynamic_obstacle_target["x"] = round(random.uniform(-15.5, 7.0), 2)
-                dynamic_obstacle_target["y"] = round(random.uniform(-17.0, 4.5), 2)
+                dynamic_obstacle_target["x"] = round(random.uniform(-8.5, 5.5), 2)
+                dynamic_obstacle_target["y"] = round(random.uniform(-10.5, 2.0), 2)
             else:
                 # Walk smoothly toward current random target (~0.18m/step)
                 step_obs = min(0.18, dist_to_obs_target)
@@ -314,9 +318,7 @@ async def simulation_telemetry_loop():
                 dynamic_obstacle_pose["y"] = round(dynamic_obstacle_pose["y"] + step_obs * math.sin(angle_obs), 2)
 
         # Check if robot is physically at or near the Dock station
-        dock_wp = DEFAULT_WAYPOINTS["Dock"]
-        dist_to_dock = math.hypot(robot_pose["x"] - dock_wp["x"], robot_pose["y"] - dock_wp["y"])
-        is_at_dock = (dist_to_dock < 1.0) or (math.hypot(robot_pose["x"] - (-14.0), robot_pose["y"] - (-2.0)) < 1.0)
+        is_at_dock = check_is_at_dock()
 
         # 2. Update Physical Battery State
         is_moving = task_manager.robot_state in ["navigating", "en_route", "docking", "avoiding_obstacle"]
@@ -528,9 +530,7 @@ def get_health():
 
 @app.get("/api/status")
 def get_status():
-    dock_wp = DEFAULT_WAYPOINTS["Dock"]
-    dist_to_dock = math.hypot(robot_pose["x"] - dock_wp["x"], robot_pose["y"] - dock_wp["y"])
-    is_at_dock = (dist_to_dock < 1.0) or (math.hypot(robot_pose["x"] - (-14.0), robot_pose["y"] - (-2.0)) < 1.0)
+    is_at_dock = check_is_at_dock()
     return {
         "robot_pose": robot_pose,
         "battery_percentage": round(battery_sim.percentage, 1),
@@ -550,9 +550,7 @@ def get_status():
 
 @app.get("/api/dock/charge_option")
 def get_dock_charge_option():
-    dock_wp = DEFAULT_WAYPOINTS["Dock"]
-    dist_to_dock = math.hypot(robot_pose["x"] - dock_wp["x"], robot_pose["y"] - dock_wp["y"])
-    is_at_dock = (dist_to_dock < 1.0) or (math.hypot(robot_pose["x"] - (-14.0), robot_pose["y"] - (-2.0)) < 1.0)
+    is_at_dock = check_is_at_dock()
     return {
         "auto_charge_at_dock": auto_charge_at_dock,
         "is_docked": battery_sim.is_docked,
@@ -570,8 +568,7 @@ def set_dock_charge_option(req: Optional[DockChargeOptionRequest] = None):
         auto_charge_at_dock = not auto_charge_at_dock
 
     dock_wp = DEFAULT_WAYPOINTS["Dock"]
-    dist_to_dock = math.hypot(robot_pose["x"] - dock_wp["x"], robot_pose["y"] - dock_wp["y"])
-    is_at_dock = (dist_to_dock < 1.0) or (math.hypot(robot_pose["x"] - (-14.0), robot_pose["y"] - (-2.0)) < 1.0)
+    is_at_dock = check_is_at_dock()
 
     if is_at_dock:
         battery_sim.is_docked = auto_charge_at_dock
@@ -591,9 +588,7 @@ def set_dock_charge_option(req: Optional[DockChargeOptionRequest] = None):
 
 @app.post("/api/dock/start_charge")
 def start_dock_charge():
-    dock_wp = DEFAULT_WAYPOINTS["Dock"]
-    dist_to_dock = math.hypot(robot_pose["x"] - dock_wp["x"], robot_pose["y"] - dock_wp["y"])
-    is_at_dock = (dist_to_dock < 1.0) or (math.hypot(robot_pose["x"] - (-14.0), robot_pose["y"] - (-2.0)) < 1.0)
+    is_at_dock = check_is_at_dock()
 
     if not is_at_dock:
         # If not at dock, trigger return to dock
@@ -617,9 +612,22 @@ def get_map_layout():
 
 @app.post("/api/delivery")
 def submit_delivery(req: DeliveryRequest):
+    if battery_sim.percentage < dock_controller.low_battery_threshold:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Battery too low ({round(battery_sim.percentage, 1)}% < {dock_controller.low_battery_threshold}%). Allow robot to recharge at dock."
+        )
+
     res = task_manager.add_delivery_request(req.target, req.item or "General Item")
     if not res["success"]:
         raise HTTPException(status_code=400, detail=res["error"])
+
+    # If robot is docked charging under TASK-AUTO-DOCK and battery is >= 20%,
+    # release the auto-dock hold so the new delivery task dispatches immediately
+    if task_manager.current_task and task_manager.current_task.get("id") == "TASK-AUTO-DOCK" and check_is_at_dock():
+        task_manager.complete_current_task(success=True)
+        task_manager.robot_state = "idle"
+
     return res
 
 @app.get("/api/queue")

@@ -18,8 +18,19 @@ class TestCstamWebBridge(unittest.TestCase):
         response = self.client.get("/api/waypoints")
         self.assertEqual(response.status_code, 200)
         data = response.json()
+        self.assertIn("Table 0", data)
         self.assertIn("Table 1", data)
+        self.assertIn("Table 23", data)
         self.assertIn("Dock", data)
+        self.assertIn("Kitchen/Pickup", data)
+
+    def test_map_layout_endpoint(self):
+        response = self.client.get("/api/map/layout")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("walls", data)
+        self.assertIn("tables", data)
+        self.assertEqual(len(data["tables"]), 24)
 
     def test_delivery_request_and_queue(self):
         # 1. Submit Delivery

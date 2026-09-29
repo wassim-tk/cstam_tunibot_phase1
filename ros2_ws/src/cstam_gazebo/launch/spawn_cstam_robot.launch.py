@@ -30,18 +30,23 @@ def generate_launch_description():
     )
     spawn_x_arg = DeclareLaunchArgument(
         'spawn_x',
-        default_value='-14.0',
+        default_value='7.06',
         description='X coordinate for robot spawn'
     )
     spawn_y_arg = DeclareLaunchArgument(
         'spawn_y',
-        default_value='-2.0',
+        default_value='-12.0',
         description='Y coordinate for robot spawn'
     )
     spawn_z_arg = DeclareLaunchArgument(
         'spawn_z',
         default_value='0.1',
         description='Z coordinate for robot spawn'
+    )
+    spawn_yaw_arg = DeclareLaunchArgument(
+        'spawn_yaw',
+        default_value='1.57',
+        description='Yaw rotation for robot spawn (facing North)'
     )
 
     # Ensure Gazebo Sim finds 3D models (both in installed share and source directories)
@@ -89,7 +94,8 @@ def generate_launch_description():
             '-name', 'cstam_robot',
             '-x', LaunchConfiguration('spawn_x'),
             '-y', LaunchConfiguration('spawn_y'),
-            '-z', LaunchConfiguration('spawn_z')
+            '-z', LaunchConfiguration('spawn_z'),
+            '-Y', LaunchConfiguration('spawn_yaw')
         ],
         output='screen'
     )
@@ -113,6 +119,7 @@ def generate_launch_description():
         spawn_x_arg,
         spawn_y_arg,
         spawn_z_arg,
+        spawn_yaw_arg,
         set_env_action,
         gazebo_cmd,
         robot_state_publisher_node,

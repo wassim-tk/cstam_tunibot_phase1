@@ -83,8 +83,8 @@ def generate_launch_description():
         ),
         launch_arguments={
             'world': LaunchConfiguration('world', default='restaurant.world'),
-            'spawn_x': LaunchConfiguration('spawn_x', default='-14.0'),
-            'spawn_y': LaunchConfiguration('spawn_y', default='-2.0'),
+            'spawn_x': LaunchConfiguration('spawn_x', default='7.06'),
+            'spawn_y': LaunchConfiguration('spawn_y', default='-12.0'),
             'spawn_z': LaunchConfiguration('spawn_z', default='0.1'),
         }.items(),
         condition=IfCondition(LaunchConfiguration('launch_gazebo', default=default_gazebo))
