@@ -262,12 +262,11 @@ class DeliverySimulatorGUI:
         dispatch_btn.pack(fill="x", pady=(14, 8))
 
         # Bottom Left: Auto-Docking Controls
-        dock_box = ttk.LabelFrame(left_col, text=" ⚡ Auto-Docking Controls (10 Points) ", padding=10)
+        dock_box = ttk.LabelFrame(left_col, text=" ⚡ Auto-Docking Controls ", padding=10)
         dock_box.pack(fill="x", side="bottom", pady=(10, 0))
 
         dock_info = tk.Label(
             dock_box,
-            text="Auto-docking triggers after 15s idle, or manually below.\nDocking can be cancelled anytime or by new orders:",
             font=("DejaVu Sans", 9), fg="#94a3b8", bg="#1e1e24", justify="left"
         )
         dock_info.pack(anchor="w", pady=(0, 6))

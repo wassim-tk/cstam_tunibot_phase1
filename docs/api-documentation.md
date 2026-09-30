@@ -1,193 +1,170 @@
-# CSTAM-TUNIBOT Web Bridge API Documentation
+# CSTAM-TUNIBOT Interface & ROS 2 API Documentation
 
-The `cstam_web_bridge` module provides RESTful HTTP endpoints and a real-time WebSocket telemetry stream bridging user interfaces to the underlying ROS 2 graph.
-
----
-
-## 1. REST API Specification
-
-### Base URL: `http://localhost:8000/api`
-
-### 1. System Health Check
-- **Endpoint**: `GET /api/health`
-- **Description**: Returns web bridge service availability and server timestamp.
-- **Response `200 OK`**:
-```json
-{
-  "status": "ok",
-  "service": "CSTAM Web Bridge",
-  "timestamp": 1725949200.0
-}
-```
+## Overview
+This document specifies the messaging protocols, topic schemas, JSON payloads, and service interfaces implemented across the **CSTAM 3.0 Autonomous Waiter Service Robot (Phase 1 MVP)**.
 
 ---
 
-### 2. Robot Status & Pose Telemetry
-- **Endpoint**: `GET /api/status`
-- **Description**: Returns live robot coordinates, battery level, active state, and current task.
-- **Response `200 OK`**:
+## 1. ROS 2 Topic & Interface Specification
+
+### 1. Delivery Request Interface
+- **Topic**: `/delivery_request`
+- **Type**: `std_msgs/msg/String`
+- **Publisher**: Delivery Simulator Interface (`delivery_simulator_ui.py`)
+- **Subscriber**: Task Manager Node (`delivery_task_manager.py`)
+- **Payload Schema (JSON)**:
 ```json
 {
-  "robot_pose": {
-    "x": -4.0,
-    "y": -4.0,
-    "yaw": 0.0
-  },
-  "battery_percentage": 98.5,
-  "robot_state": "idle",
-  "current_task": null,
-  "queue_length": 0,
-  "waypoints": ["Dock", "Kitchen/Pickup", "Table 1", "Table 2", "Table 3"]
+  "target": "Table 4",
+  "item": "🍔 Bella Burger & Fries"
 }
 ```
+- **Validation**: `target` must resolve to one of the 24 dining tables (`Table 0` .. `Table 23`) or `Kitchen/Pickup`.
 
 ---
 
-### 3. Get Predefined Waypoints
-- **Endpoint**: `GET /api/waypoints`
-- **Description**: Returns map coordinates for all target delivery locations.
-- **Response `200 OK`**:
+### 2. Task Management Action Interface
+- **Topic**: `/delivery_task_action`
+- **Type**: `std_msgs/msg/String`
+- **Publisher**: Delivery Simulator Interface (`delivery_simulator_ui.py`)
+- **Subscriber**: Task Manager Node (`delivery_task_manager.py`)
+
+#### Action A: Modify Queued Task
+Updates the target table number or food/beverage item for an order currently in the pending queue:
 ```json
 {
-  "Dock": { "x": -4.0, "y": -4.0, "type": "dock" },
-  "Kitchen/Pickup": { "x": -3.5, "y": 3.5, "type": "pickup" },
-  "Table 1": { "x": 3.0, "y": 3.5, "type": "delivery" },
-  "Table 2": { "x": 3.5, "y": -2.5, "type": "delivery" },
-  "Table 3": { "x": 1.0, "y": -3.5, "type": "delivery" }
+  "action": "modify",
+  "task_id": "TASK-0002",
+  "target": "Table 7",
+  "item": "🍝 Chef's Pasta Carbonara"
 }
 ```
 
----
+#### Action B: Delete Queued Task
+Cancels and removes a pending order from the delivery queue:
+```json
+{
+  "action": "delete",
+  "task_id": "TASK-0002"
+}
+```
 
-### 4. Submit Delivery Request
-- **Endpoint**: `POST /api/delivery`
-- **Description**: Submits a new delivery request into the task manager queue.
-- **Request Body**:
+#### Action C: Stop / Cancel Docking
+Interrupts active auto-docking and returns the robot to `IDLE`:
 ```json
 {
-  "target": "Table 1",
-  "item": "Espresso & Muffin"
-}
-```
-- **Response `200 OK`**:
-```json
-{
-  "success": true,
-  "task": {
-    "id": "TASK-0001",
-    "target": "Table 1",
-    "item": "Espresso & Muffin",
-    "status": "queued",
-    "created_at": 1725949210.0,
-    "completed_at": null
-  }
-}
-```
-- **Response `400 Bad Request`**:
-```json
-{
-  "detail": "Unknown target location 'Table 99'"
+  "action": "stop_dock"
 }
 ```
 
 ---
 
-### 5. Get Delivery Task Queue
-- **Endpoint**: `GET /api/queue`
-- **Description**: Returns current active task, pending FIFO queue, and historical tasks.
-- **Response `200 OK`**:
-```json
-{
-  "current_task": {
-    "id": "TASK-0001",
-    "target": "Table 1",
-    "item": "Espresso & Muffin",
-    "status": "en_route"
-  },
-  "queue": [
-    {
-      "id": "TASK-0002",
-      "target": "Table 2",
-      "item": "Fresh Orange Juice",
-      "status": "queued"
-    }
-  ],
-  "task_history": []
-}
-```
+### 3. Auto-Docking Command Interface
+- **Topic**: `/dock_command`
+- **Type**: `std_msgs/msg/String`
+- **Payloads**:
+  - `"DOCK_NOW:manual_ui"`: Commands the robot to navigate to the Southeast Charging Station (`7.06, -12.00`).
+  - `"DOCK_NOW:dock_idle"`: Dispatched by `docking_controller` upon 15s idle timeout.
+  - `"STOP_DOCK"` / `"CANCEL_DOCK"`: Cancels active docking, applies zero velocity on `/cmd_vel`, and resets state to `IDLE`.
 
 ---
 
-### 6. Clear Task Queue
-- **Endpoint**: `DELETE /api/queue`
-- **Description**: Clears all pending delivery tasks from queue.
-- **Response `200 OK`**:
-```json
-{
-  "success": true,
-  "message": "Delivery task queue cleared."
-}
-```
+### 4. Dock State Telemetry
+- **Topic**: `/dock_state`
+- **Type**: `std_msgs/msg/Bool`
+- **Direction**: Task Manager $\rightarrow$ Simulator & Controllers
+- **Value**:
+  - `true`: Robot is docked at charging station.
+  - `false`: Robot is undocked or in transit.
 
 ---
 
-### 7. Trigger Manual Dock Command
-- **Endpoint**: `POST /api/dock`
-- **Description**: Queues immediate return to dock command.
-- **Response `200 OK`**:
+### 5. Delivery Queue Status Telemetry
+- **Topic**: `/delivery_queue_status`
+- **Type**: `std_msgs/msg/String`
+- **Payload Schema (JSON)**:
 ```json
 {
-  "success": true,
-  "message": "Manual dock command queued."
-}
-```
-
----
-
-### 8. Toggle Dynamic Obstacle Simulation
-- **Endpoint**: `POST /api/obstacle/trigger`
-- **Description**: Activates or deactivates dynamic walking human obstacle in Gazebo world.
-- **Request Body**:
-```json
-{
-  "active": true
-}
-```
-- **Response `200 OK`**:
-```json
-{
-  "success": true,
-  "dynamic_obstacle_active": true
-}
-```
-
----
-
-## 2. WebSocket Telemetry Stream
-
-- **URL**: `ws://localhost:8000/ws/telemetry`
-- **Description**: Real-time 2Hz state broadcast containing robot pose, battery voltage, active task, queue, and obstacle state.
-- **Payload Schema**:
-```json
-{
-  "timestamp": 1725949215.5,
-  "robot_pose": { "x": 1.25, "y": 2.10, "yaw": 0.45 },
-  "battery_percentage": 97.2,
-  "voltage": 12.52,
   "robot_state": "navigating",
   "current_task": {
     "id": "TASK-0001",
     "target": "Table 1",
-    "item": "Espresso & Muffin",
-    "status": "en_route"
+    "item": "☕ Espresso & Croissant",
+    "status": "en_route",
+    "created_at": 1727720000.0,
+    "completed_at": null
   },
-  "queue_length": 1,
-  "queue": [ ... ],
-  "completed_tasks": [ ... ],
-  "waypoints": { ... },
-  "dynamic_obstacle": {
-    "active": true,
-    "pose": { "x": 0.5, "y": -1.0 }
-  }
+  "queue_length": 2,
+  "pending_tasks": [
+    {
+      "id": "TASK-0002",
+      "target": "Table 4",
+      "item": "🍔 Bella Burger & Fries",
+      "status": "queued",
+      "created_at": 1727720005.0,
+      "completed_at": null
+    }
+  ],
+  "completed_count": 5
 }
+```
+
+---
+
+### 6. Robot System State Telemetry
+- **Topic**: `/robot_system_state`
+- **Type**: `std_msgs/msg/String`
+- **Values**:
+  - `IDLE`: Robot parked and ready for orders.
+  - `NAVIGATING`: Robot actively driving towards a service table.
+  - `AT_TABLE`: Robot arrived at table, handing over delivery (3s dwell).
+  - `DOCKING`: Robot autonomously returning to charging dock.
+  - `DOCKED`: Robot parked at docking pad.
+
+---
+
+## 2. Nav2 Navigation Stack Interface
+
+### Goal Navigation Action
+- **Action Server**: `/navigate_to_pose`
+- **Action Type**: `nav2_msgs/action/NavigateToPose`
+- **Goal Field**: `geometry_msgs/msg/PoseStamped` in `'map'` frame.
+
+### Velocity Command Interface
+- **Topic**: `/cmd_vel`
+- **Type**: `geometry_msgs/msg/Twist`
+- **Linear**: `linear.x` (forward/backward velocity in m/s).
+- **Angular**: `angular.z` (rotational velocity in rad/s).
+
+---
+
+## 3. Predefined Waypoints Schema (`waypoints.yaml`)
+
+```yaml
+waypoints:
+  Dock:
+    name: "Docking & Charging Station"
+    x: 7.06
+    y: -12.00
+    z: 0.0
+    qx: 0.0
+    qy: 0.0
+    qz: 0.7071
+    qw: 0.7071
+    type: "dock"
+
+  Kitchen/Pickup:
+    name: "Kitchen & Order Pickup Counter"
+    x: -9.60
+    y: -1.39
+    z: 0.0
+    qx: 0.0
+    qy: 0.0
+    qz: 1.0
+    qw: 0.0
+    type: "pickup"
+
+  Table 0 .. Table 23:
+    name: "Dining Table Service Point"
+    # Service points positioned in free aisles with >=0.55m clearance facing the table
 ```
