@@ -22,7 +22,6 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'battery_simulator = cstam_core.battery_simulator:main',
             'delivery_task_manager = cstam_core.delivery_task_manager:main',
             'docking_controller = cstam_core.docking_controller:main',
         ],

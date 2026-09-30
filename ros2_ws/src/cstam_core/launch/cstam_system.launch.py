@@ -60,13 +60,13 @@ def generate_launch_description():
 
     launch_spawn_x_arg = DeclareLaunchArgument(
         'spawn_x',
-        default_value='-14.0',
+        default_value='7.06',
         description='X coordinate for robot spawn'
     )
 
     launch_spawn_y_arg = DeclareLaunchArgument(
         'spawn_y',
-        default_value='-2.0',
+        default_value='-12.0',
         description='Y coordinate for robot spawn'
     )
 
@@ -74,6 +74,12 @@ def generate_launch_description():
         'spawn_z',
         default_value='0.1',
         description='Z coordinate for robot spawn'
+    )
+
+    launch_rviz_arg = DeclareLaunchArgument(
+        'launch_rviz',
+        default_value='true',
+        description='Launch RViz2 with 3D Navigation visualization'
     )
 
     # 1. Gazebo + Robot Spawn Launch (Modern Gazebo / Gz Sim)
@@ -98,12 +104,19 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('launch_nav', default=default_nav))
     )
 
-    # 3. Battery Simulator Node
-    battery_sim_node = Node(
-        package='cstam_core',
-        executable='battery_simulator',
-        name='battery_simulator',
+    # 3. RViz2 3D Navigation Visualizer
+    rviz_config_file = os.path.join(
+        get_package_share_directory('cstam_navigation'),
+        'config',
+        'cstam_nav2.rviz'
+    )
+    rviz_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        arguments=['-d', rviz_config_file],
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
+        condition=IfCondition(LaunchConfiguration('launch_rviz', default='true')),
         output='screen'
     )
 
@@ -133,9 +146,10 @@ def generate_launch_description():
         launch_spawn_x_arg,
         launch_spawn_y_arg,
         launch_spawn_z_arg,
+        launch_rviz_arg,
         gazebo_launch,
         nav_launch,
-        battery_sim_node,
+        rviz_node,
         task_manager_node,
         docking_controller_node
     ]

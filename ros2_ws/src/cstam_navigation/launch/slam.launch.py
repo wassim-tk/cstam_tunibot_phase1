@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_cstam_navigation = get_package_share_directory('cstam_navigation')
-    slam_params_file = os.path.join(pkg_cstam_navigation, 'config', 'nav2_params.yaml')
+    slam_params_file = os.path.join(pkg_cstam_navigation, 'config', 'slam_params.yaml')
 
     slam_toolbox_node = Node(
         package='slam_toolbox',

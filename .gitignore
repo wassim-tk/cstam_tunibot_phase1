@@ -23,3 +23,7 @@ venv/
 .venv/
 docs/venv/
 
+
+# Non-Phase 1 Archive
+archive_non_phase1/
+

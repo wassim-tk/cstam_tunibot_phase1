@@ -1,6 +1,12 @@
 amcl:
   ros__parameters:
     use_sim_time: True
+    set_initial_pose: true
+    initial_pose:
+      x: 7.06
+      y: -12.0
+      z: 0.0
+      yaw: 1.57
     alpha1: 0.2
     alpha2: 0.2
     alpha3: 0.2
@@ -91,7 +97,7 @@ controller_server:
       decel_lim_y: 0.0
       decel_lim_theta: -3.2
       vx_samples: 20
-      vy_samples: 5
+      vy_samples: 1
       vtheta_samples: 20
       sim_time: 1.7
       linear_granularity: 0.05
@@ -102,11 +108,11 @@ controller_server:
       short_circuit_trajectory_evaluation: True
       stateful: True
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
-      BaseObstacle.scale: 0.02
-      PathAlign.scale: 32.0
-      GoalAlign.scale: 24.0
-      PathDist.scale: 32.0
-      GoalDist.scale: 24.0
+      BaseObstacle.scale: 0.08
+      PathAlign.scale: 16.0
+      GoalAlign.scale: 16.0
+      PathDist.scale: 16.0
+      GoalDist.scale: 20.0
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
@@ -118,8 +124,8 @@ planner_server:
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner::NavfnPlanner"
-      tolerance: 0.5
-      use_astar: false
+      tolerance: 0.25
+      use_astar: true
       allow_unknown: true
 
 behavior_server:
@@ -170,10 +176,10 @@ global_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
-          raytrace_max_range: 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.5
-          obstacle_min_range: 0.0
+          raytrace_max_range: 4.0
+          raytrace_min_range: 0.15
+          obstacle_max_range: 3.5
+          obstacle_min_range: 0.15
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
@@ -193,16 +199,10 @@ local_costmap:
       height: 4
       resolution: 0.05
       robot_radius: 0.3
-      plugins: ["voxel_layer", "inflation_layer"]
-      voxel_layer:
-        plugin: "nav2_costmap_2d::VoxelLayer"
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
-        publish_voxel_map: True
-        origin_z: 0.0
-        z_resolution: 0.05
-        z_voxels: 16
-        max_obstacle_height: 2.0
-        mark_threshold: 0
         observation_sources: scan
         scan:
           topic: /scan
@@ -210,10 +210,10 @@ local_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
-          raytrace_max_range: 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.5
-          obstacle_min_range: 0.0
+          raytrace_max_range: 4.0
+          raytrace_min_range: 0.15
+          obstacle_max_range: 3.5
+          obstacle_min_range: 0.15
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
@@ -227,8 +227,9 @@ collision_monitor:
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_smoothed"
     cmd_vel_out_topic: "cmd_vel"
-    transform_tolerance: 0.2
-    source_timeout: 1.0
+    state_topic: "collision_monitor_state"
+    transform_tolerance: 0.5
+    source_timeout: 2.0
     stop_pub_timeout: 2.0
     polygons: ["FootprintApproach"]
     FootprintApproach:
@@ -239,14 +240,14 @@ collision_monitor:
       simulation_time_step: 0.1
       min_points: 6
       visualize: false
-      enabled: true
+      enabled: false
     observation_sources: ["scan"]
     scan:
       type: "scan"
       topic: "/scan"
-      enabled: true
-      min_height: 0.05
+      min_height: 0.15
       max_height: 2.0
+      enabled: false
 
 velocity_smoother:
   ros__parameters:
