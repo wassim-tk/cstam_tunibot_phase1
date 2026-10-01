@@ -20,4 +20,4 @@ echo " - Or run ./run_delivery_simulator.sh to open the Delivery "
 echo "   Simulator Interface & test orders / auto-docking.      "
 echo "=========================================================="
 
-ros2 launch cstam_core cstam_system.launch.py launch_rviz:=true
+ros2 launch cstam_core cstam_system.launch.py launch_rviz:=true "$@"

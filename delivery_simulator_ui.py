@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
-CSTAM Phase 1: Delivery Process Simulator Interface
+CSTAM Phase 1: Delivery Process Simulator Interface & Mission Control Dashboard
 Native graphical & interactive interface to simulate placing food/beverage orders,
-monitoring the delivery queue, and testing auto-docking behavior.
+monitoring the delivery queue, and testing auto-docking behavior across multiple worlds:
+- Dar Tunibot (resto_arbi.world: Table 1 to Table 10, Kitchen/Pickup, Dock)
+- Restaurant Lounge (restaurant.world: Table 0 to Table 23, Kitchen/Pickup, Dock)
 """
 
 import sys
@@ -29,16 +32,63 @@ except ImportError:
     HAVE_TKINTER = False
 
 
-DEFAULT_TABLES = [f"Table {i}" for i in range(24)] + ["Kitchen/Pickup"]
+WORLDS_CONFIG = {
+    "Dar Tunibot (resto_arbi.world)": {
+        "short_name": "resto_arbi",
+        "title": "Dar Tunibot · Mediterranean Heritage Restaurant",
+        "tables": [f"Table {i}" for i in range(1, 11)] + ["Kitchen/Pickup", "Dock"],
+        "presets": [
+            "☕ Café Direct & Bambalouni",
+            "🍲 Traditional Brik à l'Oeuf",
+            "🥗 Salade Tunisienne",
+            "🥘 Couscous Royal & Lamb",
+            "🥤 Citronnade aux Amandes",
+            "🍰 Makroudh au Miel"
+        ],
+        "default_table": "Table 1",
+        "default_item": "☕ Café Direct & Bambalouni"
+    },
+    "Restaurant Lounge (restaurant.world)": {
+        "short_name": "restaurant",
+        "title": "Modern Restaurant Lounge & Grand Promenade",
+        "tables": [f"Table {i}" for i in range(24)] + ["Kitchen/Pickup", "Dock"],
+        "presets": [
+            "☕ Espresso & Croissant",
+            "🍔 Bella Burger & Fries",
+            "🍝 Chef's Pasta Carbonara",
+            "🥗 Mediterranean Salad",
+            "🥤 Sparkling Lemonade",
+            "🍰 Tiramisu Dessert"
+        ],
+        "default_table": "Table 1",
+        "default_item": "☕ Espresso & Croissant"
+    }
+}
 
-PRESET_ITEMS = [
-    "☕ Espresso & Croissant",
-    "🍔 Bella Burger & Fries",
-    "🍝 Chef's Pasta Carbonara",
-    "🥗 Mediterranean Salad",
-    "🥤 Sparkling Lemonade",
-    "🍰 Tiramisu Dessert"
-]
+
+def detect_initial_world() -> str:
+    # 1. Check command line args
+    for idx, arg in enumerate(sys.argv):
+        if arg in ["--world", "-w"] and idx + 1 < len(sys.argv):
+            val = sys.argv[idx + 1].lower()
+            if "resto" in val or "arbi" in val or "dar" in val:
+                return "Dar Tunibot (resto_arbi.world)"
+            return "Restaurant Lounge (restaurant.world)"
+        if "world:=resto" in arg.lower() or "world:=arbi" in arg.lower():
+            return "Dar Tunibot (resto_arbi.world)"
+        if "world:=rest" in arg.lower():
+            return "Restaurant Lounge (restaurant.world)"
+
+    # 2. Check environment variable
+    env_world = os.environ.get("CSTAM_WORLD", "").lower()
+    if "resto" in env_world or "arbi" in env_world:
+        return "Dar Tunibot (resto_arbi.world)"
+
+    # 3. Default to Dar Tunibot if resto_arbi map is present
+    if os.path.exists("ros2_ws/src/cstam_navigation/maps/resto_arbi_map.yaml"):
+        return "Dar Tunibot (resto_arbi.world)"
+
+    return "Restaurant Lounge (restaurant.world)"
 
 
 class Ros2DeliveryBridge:
@@ -56,6 +106,7 @@ class Ros2DeliveryBridge:
             "completed_count": 0
         }
         self.is_docked = False
+        self._mock_task_id = 1
 
         if HAVE_ROS2:
             try:
@@ -108,8 +159,14 @@ class Ros2DeliveryBridge:
             return True
         else:
             # Standalone mock fallback
+            tid = f"TASK-{self._mock_task_id:04d}"
+            self._mock_task_id += 1
             self.latest_status["queue_length"] += 1
-            self.latest_status["pending_tasks"].append({"id": f"TASK-{int(time.time()*10)%10000:04d}", "target": target, "item": item})
+            self.latest_status["pending_tasks"].append({
+                "id": tid,
+                "target": target,
+                "item": item
+            })
             return True
 
     def delete_task(self, task_id: str):
@@ -160,15 +217,17 @@ class Ros2DeliveryBridge:
 
 
 class DeliverySimulatorGUI:
-    def __init__(self, root, bridge: Ros2DeliveryBridge):
+    def __init__(self, root, bridge: Ros2DeliveryBridge, initial_world: str):
         self.root = root
         self.bridge = bridge
-        self.root.title("CSTAM - Waiter Robot Delivery Simulator (Phase 1 MVP)")
-        self.root.geometry("880x680")
+        self.current_world = initial_world
+        self.root.title("CSTAM - Autonomous Waiter Robot Control Dashboard")
+        self.root.geometry("920x720")
         self.root.configure(bg="#1e1e24")
 
         self.selected_task_id = None
         self._cached_queue_sig = None
+        self.preset_buttons = []
 
         self._setup_styles()
         self._build_ui()
@@ -189,11 +248,11 @@ class DeliverySimulatorGUI:
         style.configure("Success.TButton", background="#2a9d8f", foreground="#ffffff")
         style.map("Success.TButton", background=[("active", "#21867a")])
 
-        # Entry styling: Dark slate background with bright white text and cyan cursor
+        # Entry styling
         style.configure("TEntry", fieldbackground="#2b2d42", foreground="#ffffff", insertcolor="#ffffff", bordercolor="#4b5563")
         style.map("TEntry", fieldbackground=[("focus", "#334155")])
 
-        # Combobox styling: Dark background with bright white text
+        # Combobox styling
         style.configure("TCombobox", fieldbackground="#2b2d42", background="#393e46", foreground="#ffffff",
                         selectbackground="#00adb5", selectforeground="#ffffff", arrowcolor="#ffffff")
         style.map("TCombobox",
@@ -206,18 +265,24 @@ class DeliverySimulatorGUI:
 
     def _build_ui(self):
         # 1. Header & Live Robot Status Card
-        header_frame = tk.Frame(self.root, bg="#2b2d42", padx=16, pady=12)
-        header_frame.pack(fill="x", padx=12, pady=10)
+        header_frame = tk.Frame(self.root, bg="#2b2d42", padx=16, pady=10)
+        header_frame.pack(fill="x", padx=12, pady=(10, 6))
 
-        title_lbl = tk.Label(header_frame, text="🤖 CSTAM Phase 1: Waiter Robot Delivery Simulator",
-                             font=("DejaVu Sans", 14, "bold"), fg="#ffffff", bg="#2b2d42")
-        title_lbl.pack(anchor="w")
+        top_row = tk.Frame(header_frame, bg="#2b2d42")
+        top_row.pack(fill="x")
+
+        self.title_lbl = tk.Label(
+            top_row,
+            text=f"🤖 CSTAM Control Dashboard: {WORLDS_CONFIG[self.current_world]['title']}",
+            font=("DejaVu Sans", 13, "bold"), fg="#ffffff", bg="#2b2d42"
+        )
+        self.title_lbl.pack(side="left")
 
         status_bar = tk.Frame(header_frame, bg="#2b2d42", pady=6)
         status_bar.pack(fill="x")
 
-        tk.Label(status_bar, text="Status: ", font=("DejaVu Sans", 11, "bold"), fg="#a0aab2", bg="#2b2d42").pack(side="left")
-        self.state_badge = tk.Label(status_bar, text="IDLE", font=("DejaVu Sans", 11, "bold"),
+        tk.Label(status_bar, text="Robot State: ", font=("DejaVu Sans", 10, "bold"), fg="#a0aab2", bg="#2b2d42").pack(side="left")
+        self.state_badge = tk.Label(status_bar, text="IDLE", font=("DejaVu Sans", 10, "bold"),
                                     fg="#ffffff", bg="#457b9d", padx=10, pady=2)
         self.state_badge.pack(side="left", padx=6)
 
@@ -230,46 +295,46 @@ class DeliverySimulatorGUI:
         content_frame.pack(fill="both", expand=True, padx=12, pady=4)
 
         # Left Column: Order Dispatcher
-        left_col = ttk.LabelFrame(content_frame, text=" 🍽️ New Delivery Request ", padding=12)
+        left_col = ttk.LabelFrame(content_frame, text=" 🍽️ Order Dispatcher & Environment ", padding=12)
         left_col.pack(side="left", fill="both", expand=True, padx=(0, 6))
 
+        # World / Environment Selector
+        ttk.Label(left_col, text="Active Floor Plan / World:", font=("DejaVu Sans", 10, "bold")).pack(anchor="w", pady=(0, 2))
+        self.world_combo = ttk.Combobox(left_col, values=list(WORLDS_CONFIG.keys()), state="readonly", font=("DejaVu Sans", 10))
+        self.world_combo.set(self.current_world)
+        self.world_combo.pack(fill="x", pady=(0, 10))
+        self.world_combo.bind("<<ComboboxSelected>>", self._on_world_change)
+
+        # Destination Table
         ttk.Label(left_col, text="Destination Table:", font=("DejaVu Sans", 10, "bold")).pack(anchor="w", pady=(4, 2))
-        self.table_combo = ttk.Combobox(left_col, values=DEFAULT_TABLES, state="readonly", font=("DejaVu Sans", 11))
-        self.table_combo.set("Table 1")
+        cfg = WORLDS_CONFIG[self.current_world]
+        self.table_combo = ttk.Combobox(left_col, values=cfg["tables"], state="readonly", font=("DejaVu Sans", 11))
+        self.table_combo.set(cfg["default_table"])
         self.table_combo.pack(fill="x", pady=(0, 10))
 
-        ttk.Label(left_col, text="Order Item / Presets:", font=("DejaVu Sans", 10, "bold")).pack(anchor="w", pady=(4, 2))
+        # Order Item Entry
+        ttk.Label(left_col, text="Order Item / Specialty:", font=("DejaVu Sans", 10, "bold")).pack(anchor="w", pady=(4, 2))
         self.item_entry = tk.Entry(left_col, font=("DejaVu Sans", 11), bg="#2b2d42", fg="#ffffff",
                                    insertbackground="#00adb5", relief="flat", highlightthickness=1,
                                    highlightbackground="#4b5563", highlightcolor="#00adb5")
-        self.item_entry.insert(0, "☕ Espresso & Croissant")
+        self.item_entry.insert(0, cfg["default_item"])
         self.item_entry.pack(fill="x", ipady=4, pady=(0, 8))
 
         # Quick preset buttons
-        preset_frame = tk.Frame(left_col, bg="#1e1e24")
-        preset_frame.pack(fill="x", pady=4)
-        for i, item in enumerate(PRESET_ITEMS):
-            r, c = divmod(i, 2)
-            btn = tk.Button(preset_frame, text=item, bg="#2b2d42", fg="#e0e0e0", activebackground="#3d405b",
-                            activeforeground="#ffffff", font=("DejaVu Sans", 9), relief="flat", padx=6, pady=4,
-                            command=lambda it=item: self._select_preset(it))
-            btn.grid(row=r, column=c, sticky="ew", padx=2, pady=2)
-        preset_frame.columnconfigure(0, weight=1)
-        preset_frame.columnconfigure(1, weight=1)
+        ttk.Label(left_col, text="Menu Recommendations:", font=("DejaVu Sans", 9, "bold"), foreground="#94a3b8").pack(anchor="w", pady=(0, 2))
+        self.preset_frame = tk.Frame(left_col, bg="#1e1e24")
+        self.preset_frame.pack(fill="x", pady=2)
+        self.preset_frame.columnconfigure(0, weight=1)
+        self.preset_frame.columnconfigure(1, weight=1)
+        self._build_preset_buttons()
 
         # Dispatch Button
         dispatch_btn = ttk.Button(left_col, text="🚀 Dispatch Order to Robot", command=self._on_dispatch)
         dispatch_btn.pack(fill="x", pady=(14, 8))
 
         # Bottom Left: Auto-Docking Controls
-        dock_box = ttk.LabelFrame(left_col, text=" ⚡ Auto-Docking Controls ", padding=10)
-        dock_box.pack(fill="x", side="bottom", pady=(10, 0))
-
-        dock_info = tk.Label(
-            dock_box,
-            font=("DejaVu Sans", 9), fg="#94a3b8", bg="#1e1e24", justify="left"
-        )
-        dock_info.pack(anchor="w", pady=(0, 6))
+        dock_box = ttk.LabelFrame(left_col, text=" ⚡ Auto-Docking & Charging ", padding=10)
+        dock_box.pack(fill="x", side="bottom", pady=(8, 0))
 
         dock_btn_frame = tk.Frame(dock_box, bg="#1e1e24")
         dock_btn_frame.pack(fill="x", pady=(2, 2))
@@ -290,62 +355,74 @@ class DeliverySimulatorGUI:
         )
         stop_dock_btn.pack(side="right", fill="x", expand=True, padx=(4, 0))
 
-        # Right Column: Live Task Queue & Progress
+        # Right Column: Live Task Queue & Monitoring
         right_col = ttk.LabelFrame(content_frame, text=" 📋 Live Delivery Queue & Monitoring ", padding=12)
         right_col.pack(side="right", fill="both", expand=True, padx=(6, 0))
 
         # Current Task Display Box
-        tk.Label(right_col, text="Current Active Task:", font=("DejaVu Sans", 10, "bold"), fg="#00adb5", bg="#1e1e24").pack(anchor="w")
-        self.active_task_card = tk.Label(right_col, text="No active task (Robot Idle)", font=("DejaVu Sans", 10),
-                                         fg="#f1faee", bg="#2b2d42", relief="groove", padx=10, pady=10, justify="left", anchor="w")
-        self.active_task_card.pack(fill="x", pady=(4, 10))
+        tk.Label(right_col, text="Current Active Delivery:", font=("DejaVu Sans", 10, "bold"), fg="#00adb5", bg="#1e1e24").pack(anchor="w")
+        self.active_task_card = tk.Label(
+            right_col, text="No active task (Robot Idle)", font=("DejaVu Sans", 10),
+            fg="#f1faee", bg="#2b2d42", relief="groove", padx=10, pady=10, justify="left", anchor="w"
+        )
+        self.active_task_card.pack(fill="x", pady=(4, 12))
 
-        # Pending Queue List
-        tk.Label(right_col, text="Pending Queue Orders (Click to Select / Edit / Delete):",
-                 font=("DejaVu Sans", 10, "bold"), fg="#00adb5", bg="#1e1e24").pack(anchor="w")
-        self.queue_listbox = tk.Listbox(right_col, font=("DejaVu Sans", 10), bg="#2b2d42", fg="#ffffff",
-                                        selectbackground="#00adb5", height=7, relief="flat", borderwidth=0)
-        self.queue_listbox.pack(fill="both", expand=True, pady=(4, 6))
+        # Pending Queue Title
+        tk.Label(right_col, text="Pending Tasks (FIFO Dispatch):", font=("DejaVu Sans", 10, "bold"),
+                 fg="#e0e0e0", bg="#1e1e24").pack(anchor="w", pady=(0, 2))
+
+        # Queue Listbox with Scrollbar
+        list_frame = tk.Frame(right_col, bg="#1e1e24")
+        list_frame.pack(fill="both", expand=True, pady=(0, 8))
+
+        self.queue_listbox = tk.Listbox(
+            list_frame, font=("DejaVu Sans Mono", 10), bg="#2b2d42", fg="#ffffff",
+            selectbackground="#00adb5", selectforeground="#ffffff",
+            relief="flat", highlightthickness=1, highlightbackground="#393e46",
+            highlightcolor="#00adb5", activestyle="none"
+        )
+        self.queue_listbox.pack(side="left", fill="both", expand=True)
         self.queue_listbox.bind('<<ListboxSelect>>', self._on_queue_select)
 
-        # Queue Item Management Control Box (Edit / Delete)
-        manage_frame = tk.Frame(right_col, bg="#2b2d42", padx=8, pady=8)
-        manage_frame.pack(fill="x", pady=(0, 8))
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.queue_listbox.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.queue_listbox.config(yscrollcommand=scrollbar.set)
+
+        # Selected Task Operations Box
+        edit_box = ttk.LabelFrame(right_col, text=" ✏️ Modify / Delete Selected Task ", padding=8)
+        edit_box.pack(fill="x", pady=(0, 10))
 
         self.selected_task_lbl = tk.Label(
-            manage_frame, text="Click a queued task above to Edit or Delete",
-            font=("DejaVu Sans", 9, "bold"), fg="#94a3b8", bg="#2b2d42", anchor="w"
+            edit_box, text="Click a queued task above to Edit or Delete",
+            font=("DejaVu Sans", 9, "italic"), fg="#94a3b8", bg="#1e1e24"
         )
-        self.selected_task_lbl.pack(fill="x", pady=(0, 6))
+        self.selected_task_lbl.pack(anchor="w", pady=(0, 6))
 
-        btn_row = tk.Frame(manage_frame, bg="#2b2d42")
-        btn_row.pack(fill="x")
+        action_btn_frame = tk.Frame(edit_box, bg="#1e1e24")
+        action_btn_frame.pack(fill="x")
 
         self.modify_btn = tk.Button(
-            btn_row, text="✏️ Save Edit to Task", bg="#4b5563", fg="#ffffff",
-            activebackground="#00838f", activeforeground="#ffffff",
-            font=("DejaVu Sans", 9, "bold"), relief="flat", state="disabled", pady=5,
-            command=self._on_modify_selected
+            action_btn_frame, text="💾 Save Edit", bg="#4b5563", fg="#ffffff",
+            font=("DejaVu Sans", 9, "bold"), relief="flat", state="disabled",
+            padx=10, pady=6, command=self._on_modify_selected
         )
         self.modify_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
 
         self.delete_btn = tk.Button(
-            btn_row, text="🗑️ Delete Task", bg="#4b5563", fg="#ffffff",
-            activebackground="#ba181b", activeforeground="#ffffff",
-            font=("DejaVu Sans", 9, "bold"), relief="flat", state="disabled", pady=5,
-            command=self._on_delete_selected
+            action_btn_frame, text="🗑️ Delete Task", bg="#4b5563", fg="#ffffff",
+            font=("DejaVu Sans", 9, "bold"), relief="flat", state="disabled",
+            padx=10, pady=6, command=self._on_delete_selected
         )
-        self.delete_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.delete_btn.pack(side="left", fill="x", expand=True, padx=4)
 
         self.clear_sel_btn = tk.Button(
-            btn_row, text="✖ Cancel", bg="#374151", fg="#ffffff",
-            activebackground="#1f2937", activeforeground="#ffffff",
-            font=("DejaVu Sans", 9), relief="flat", state="disabled", pady=5,
-            command=self._on_clear_selection
+            action_btn_frame, text="✖ Cancel", bg="#374151", fg="#ffffff",
+            font=("DejaVu Sans", 9), relief="flat", state="disabled",
+            padx=8, pady=6, command=self._on_clear_selection
         )
-        self.clear_sel_btn.pack(side="right", padx=(4, 0))
+        self.clear_sel_btn.pack(side="right", fill="x", expand=True, padx=(4, 0))
 
-        # Stats footer
+        # Bottom Statistics Bar
         stats_frame = tk.Frame(right_col, bg="#1e1e24")
         stats_frame.pack(fill="x")
         self.completed_lbl = tk.Label(stats_frame, text="Completed Deliveries: 0", font=("DejaVu Sans", 10, "bold"),
@@ -355,6 +432,36 @@ class DeliverySimulatorGUI:
         self.queue_len_lbl = tk.Label(stats_frame, text="Queued: 0", font=("DejaVu Sans", 10, "bold"),
                                       fg="#f4a261", bg="#1e1e24")
         self.queue_len_lbl.pack(side="right")
+
+    def _build_preset_buttons(self):
+        for btn in self.preset_buttons:
+            btn.destroy()
+        self.preset_buttons.clear()
+
+        presets = WORLDS_CONFIG[self.current_world]["presets"]
+        for i, item in enumerate(presets):
+            r, c = divmod(i, 2)
+            btn = tk.Button(
+                self.preset_frame, text=item, bg="#2b2d42", fg="#e0e0e0",
+                activebackground="#3d405b", activeforeground="#ffffff",
+                font=("DejaVu Sans", 9), relief="flat", padx=6, pady=4,
+                command=lambda it=item: self._select_preset(it)
+            )
+            btn.grid(row=r, column=c, sticky="ew", padx=2, pady=2)
+            self.preset_buttons.append(btn)
+
+    def _on_world_change(self, event=None):
+        selected_world = self.world_combo.get()
+        if selected_world in WORLDS_CONFIG:
+            self.current_world = selected_world
+            cfg = WORLDS_CONFIG[selected_world]
+            self.title_lbl.config(text=f"🤖 CSTAM Control Dashboard: {cfg['title']}")
+            self.table_combo.config(values=cfg["tables"])
+            self.table_combo.set(cfg["default_table"])
+            self.item_entry.delete(0, tk.END)
+            self.item_entry.insert(0, cfg["default_item"])
+            self._build_preset_buttons()
+            self._on_clear_selection()
 
     def _select_preset(self, item_name: str):
         self.item_entry.delete(0, tk.END)
@@ -383,8 +490,9 @@ class DeliverySimulatorGUI:
             target = task.get("target", "")
             item = task.get("item", "")
 
-            # Auto-populate input fields on the left
-            if target in DEFAULT_TABLES:
+            # Auto-populate input fields
+            cfg_tables = WORLDS_CONFIG[self.current_world]["tables"]
+            if target in cfg_tables:
                 self.table_combo.set(target)
             self.item_entry.delete(0, tk.END)
             self.item_entry.insert(0, item)
@@ -428,8 +536,7 @@ class DeliverySimulatorGUI:
             return
         tid = self.selected_task_id
         self.bridge.delete_task(tid)
-        self.selected_task_id = None
-        self._update_selection_ui()
+        self._on_clear_selection()
 
     def _on_clear_selection(self):
         self.selected_task_id = None
@@ -440,66 +547,84 @@ class DeliverySimulatorGUI:
         self.bridge.stop_docking()
 
     def _update_loop(self):
-        st = self.bridge.latest_status
-        state = st.get("robot_state", "idle").upper()
-        cur_task = st.get("current_task")
-        queue = st.get("pending_tasks", [])
-        completed = st.get("completed_count", 0)
+        status = self.bridge.latest_status
+        raw_state = status.get("robot_state", "idle")
+        state = raw_state.upper()
 
-        # Update Badge Colors
-        state_colors = {
+        # Update Badge Color
+        badge_colors = {
             "IDLE": ("#457b9d", "#ffffff"),
-            "NAVIGATING": ("#0284c7", "#ffffff"),
-            "EN_ROUTE": ("#0284c7", "#ffffff"),
+            "NAVIGATING": ("#f59e0b", "#000000"),
             "AT_TABLE": ("#10b981", "#ffffff"),
-            "DELIVERING": ("#10b981", "#ffffff"),
-            "DOCKING": ("#f59e0b", "#000000"),
-            "DOCKED": ("#6366f1", "#ffffff"),
+            "DOCKING": ("#ec4899", "#ffffff"),
+            "DOCKED": ("#10b981", "#ffffff"),
+            "CHARGING": ("#06b6d4", "#ffffff")
         }
-        bg, fg = state_colors.get(state, ("#457b9d", "#ffffff"))
-        self.state_badge.config(text=f" {state} ", bg=bg, fg=fg)
+        bg_col, fg_col = badge_colors.get(state, ("#6b7280", "#ffffff"))
+        self.state_badge.config(text=state, bg=bg_col, fg=fg_col)
 
         # Dock Badge
-        if self.bridge.is_docked or state == "DOCKED":
-            self.dock_badge.config(text="DOCKED ⚡", bg="#10b981", fg="#ffffff")
+        if self.bridge.is_docked or state in ["DOCKED", "CHARGING"]:
+            self.dock_badge.config(text="DOCKED (CHARGING)", bg="#10b981", fg="#ffffff")
         elif state == "DOCKING":
-            self.dock_badge.config(text="DOCKING ⏳", bg="#f59e0b", fg="#000000")
+            self.dock_badge.config(text="RETURNING TO DOCK", bg="#ec4899", fg="#ffffff")
         else:
-            self.dock_badge.config(text="UNDOCKED", bg="#4b5563", fg="#ffffff")
+            self.dock_badge.config(text="UNDOCKED", bg="#6c757d", fg="#ffffff")
 
         # Active Task Card
-        if cur_task:
-            tid = cur_task.get("id", "TASK")
-            ttarget = cur_task.get("target", "Unknown")
-            titem = cur_task.get("item", "Delivery")
+        cur = status.get("current_task")
+        if cur:
+            tid = cur.get("id", "TASK")
+            target = cur.get("target", "Destination")
+            item = cur.get("item", "Item")
+            st_text = cur.get("status", "in_progress")
             self.active_task_card.config(
-                text=f"▶ {tid}: Delivering to {ttarget}\n  Item: {titem}\n  State: {state}",
-                fg="#38bdf8", bg="#1e293b"
+                text=f"[{tid}] En Route to {target}\n"
+                     f"Item: {item}\n"
+                     f"Phase: {st_text.upper()}",
+                fg="#38bdf8", bg="#1f2937"
             )
         else:
-            self.active_task_card.config(text="No active task (Robot Ready)", fg="#94a3b8", bg="#1e293b")
+            if state in ["DOCKED", "CHARGING"]:
+                self.active_task_card.config(
+                    text="Robot is docked at Charging Station.\nBattery maintenance in progress.",
+                    fg="#4ade80", bg="#1f2937"
+                )
+            elif state == "DOCKING":
+                self.active_task_card.config(
+                    text="Autonomous Return-To-Dock active.\nRouting through aisle to docking station.",
+                    fg="#f472b6", bg="#1f2937"
+                )
+            else:
+                self.active_task_card.config(
+                    text="Robot is IDLE and awaiting orders.\nSelect a table on the left to dispatch.",
+                    fg="#f1faee", bg="#2b2d42"
+                )
 
-        # Queue Listbox (only redraw if content changed to preserve user selection)
-        queue_sig = [(q.get("id"), q.get("target"), q.get("item")) for q in queue]
+        # Pending Queue Listbox Update
+        queue = status.get("pending_tasks", [])
+        completed = status.get("completed_count", 0)
+
+        queue_sig = tuple((t.get("id"), t.get("target"), t.get("item")) for t in queue)
         if queue_sig != self._cached_queue_sig:
             self._cached_queue_sig = queue_sig
             self.queue_listbox.delete(0, tk.END)
-            sel_idx = None
-            for i, q_item in enumerate(queue):
-                qid = q_item.get("id", f"#{i+1}")
-                qtarget = q_item.get("target", "")
-                qdesc = q_item.get("item", "")
-                self.queue_listbox.insert(tk.END, f" {i+1}. [{qid}] {qtarget} - {qdesc}")
-                if self.selected_task_id and qid == self.selected_task_id:
-                    sel_idx = i
+            for idx, t in enumerate(queue):
+                tid = t.get("id", f"T-{idx}")
+                tgt = t.get("target", "Table")
+                itm = t.get("item", "Meal")
+                self.queue_listbox.insert(tk.END, f"{idx+1:02d}. [{tid}] {tgt:<14} | {itm}")
 
-            if sel_idx is not None:
-                self.queue_listbox.selection_set(sel_idx)
-                self.queue_listbox.activate(sel_idx)
-            elif self.selected_task_id:
-                # Task no longer in pending queue
-                self.selected_task_id = None
-                self._update_selection_ui()
+            if self.selected_task_id:
+                reselected = False
+                for idx, t in enumerate(queue):
+                    if t.get("id") == self.selected_task_id:
+                        self.queue_listbox.selection_set(idx)
+                        reselected = True
+                        break
+                if not reselected:
+                    self.selected_task_id = None
+                    self._update_selection_ui()
 
         self.completed_lbl.config(text=f"Completed Deliveries: {completed}")
         self.queue_len_lbl.config(text=f"Queued: {len(queue)}")
@@ -507,26 +632,32 @@ class DeliverySimulatorGUI:
         self.root.after(300, self._update_loop)
 
 
-def run_cli_mode(bridge: Ros2DeliveryBridge):
-    print("=" * 65)
-    print("  CSTAM Phase 1: Interactive Delivery Process CLI Simulator")
-    print("=" * 65)
+def run_cli_mode(bridge: Ros2DeliveryBridge, initial_world: str):
+    current_world = initial_world
+    print("=" * 68)
+    print(f"  CSTAM Phase 1: Interactive Waiter Robot Delivery CLI Simulator")
+    print(f"  Active World: {current_world}")
+    print("=" * 68)
     while True:
         try:
-            print("\nOptions:")
+            cfg = WORLDS_CONFIG[current_world]
+            print(f"\n[Environment: {cfg['title']}]")
+            print("Options:")
             print("  1. Dispatch Delivery Order")
-            print("  2. View Delivery Queue & Status")
+            print("  2. View Delivery Queue & Live Status")
             print("  3. Manual Return-to-Dock Command")
             print("  4. Stop / Cancel Docking")
             print("  5. Modify Queued Task (Table or Item)")
             print("  6. Delete Queued Task")
-            print("  7. Exit")
-            choice = input("Select option (1-7): ").strip()
+            print(f"  7. Switch Environment (Currently: {cfg['short_name']})")
+            print("  8. Exit")
+            choice = input("Select option (1-8): ").strip()
 
             if choice == "1":
-                print("\nAvailable Predefined Tables: Table 0 .. Table 23, Kitchen/Pickup")
-                table = input("Enter target table [default: Table 1]: ").strip() or "Table 1"
-                item = input("Enter food/beverage item [default: Coffee & Pastry]: ").strip() or "Coffee & Pastry"
+                tables_str = ", ".join(cfg["tables"][:12])
+                print(f"\nAvailable Tables: {tables_str}...")
+                table = input(f"Enter target table [default: {cfg['default_table']}]: ").strip() or cfg["default_table"]
+                item = input(f"Enter meal item [default: {cfg['default_item']}]: ").strip() or cfg["default_item"]
                 bridge.dispatch_order(table, item)
                 print(f"✔ Order dispatched for {table}: {item}")
 
@@ -580,6 +711,16 @@ def run_cli_mode(bridge: Ros2DeliveryBridge):
                 print(f"✔ Deletion sent for {tid}.")
 
             elif choice == "7":
+                world_keys = list(WORLDS_CONFIG.keys())
+                print("\nAvailable Worlds:")
+                for i, k in enumerate(world_keys):
+                    print(f"  {i+1}. {k}")
+                w_choice = input(f"Select world (1-{len(world_keys)}): ").strip()
+                if w_choice.isdigit() and 1 <= int(w_choice) <= len(world_keys):
+                    current_world = world_keys[int(w_choice) - 1]
+                    print(f"✔ Switched environment to {current_world}")
+
+            elif choice == "8":
                 print("Exiting.")
                 break
         except (KeyboardInterrupt, EOFError):
@@ -587,14 +728,15 @@ def run_cli_mode(bridge: Ros2DeliveryBridge):
 
 
 def main():
+    initial_world = detect_initial_world()
     bridge = Ros2DeliveryBridge()
 
     if "--cli" in sys.argv or not HAVE_TKINTER or not os.environ.get("DISPLAY"):
-        print("[Simulator] Launching in interactive CLI mode...")
-        run_cli_mode(bridge)
+        print(f"[Simulator] Launching in interactive CLI mode for {initial_world}...")
+        run_cli_mode(bridge, initial_world)
     else:
         root = tk.Tk()
-        app = DeliverySimulatorGUI(root, bridge)
+        app = DeliverySimulatorGUI(root, bridge, initial_world)
         root.mainloop()
 
 

@@ -17,4 +17,4 @@ echo "   source /opt/ros/jazzy/setup.bash                       "
 echo "   ros2 run teleop_twist_keyboard teleop_twist_keyboard   "
 echo "=========================================================="
 
-ros2 launch cstam_navigation mapping_demo.launch.py
+ros2 launch cstam_navigation mapping_demo.launch.py "$@"

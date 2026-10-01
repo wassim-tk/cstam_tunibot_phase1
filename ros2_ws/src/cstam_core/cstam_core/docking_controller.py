@@ -16,7 +16,7 @@ class AutoDockingController:
     Auto-docking State Machine controller (Phase 1 MVP).
     Manages return-to-dock sequence on idle timeout (15s) and manual triggers.
     """
-    def __init__(self, idle_timeout=15.0):
+    def __init__(self, idle_timeout=5.0):
         self.idle_timeout = float(idle_timeout)
         self.idle_since = None
         self.is_docked = False
@@ -51,7 +51,7 @@ if HAVE_ROS2:
         def __init__(self):
             super().__init__('docking_controller')
 
-            self.declare_parameter('idle_timeout', 15.0)
+            self.declare_parameter('idle_timeout', 5.0)
             idle_t = self.get_parameter('idle_timeout').value
 
             self.controller = AutoDockingController(idle_t)

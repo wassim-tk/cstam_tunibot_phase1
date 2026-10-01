@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
 import json
 import time
 import math
 import threading
 from collections import deque
+
+try:
+    import yaml
+    HAVE_YAML = True
+except ImportError:
+    HAVE_YAML = False
 
 try:
     import rclpy
@@ -187,14 +194,46 @@ class TaskQueueManager:
 
 
 class DeliveryTaskManagerNode(Node):
+    def _load_waypoints(self, wp_file: str = '') -> dict:
+        if not HAVE_YAML:
+            return DEFAULT_WAYPOINTS
+        
+        target_path = wp_file.strip() if wp_file else ''
+        if not target_path or not os.path.exists(target_path):
+            try:
+                from ament_index_python.packages import get_package_share_directory
+                pkg_nav = get_package_share_directory('cstam_navigation')
+                candidate = os.path.join(pkg_nav, 'config', 'waypoints.yaml')
+                if os.path.exists(candidate):
+                    target_path = candidate
+            except Exception:
+                pass
+        
+        if target_path and os.path.exists(target_path):
+            try:
+                with open(target_path, 'r') as f:
+                    data = yaml.safe_load(f)
+                    wps = data.get('waypoints', {})
+                    if wps and isinstance(wps, dict):
+                        self.get_logger().info(f"Loaded {len(wps)} waypoints from '{target_path}'.")
+                        return wps
+            except Exception as e:
+                self.get_logger().warn(f"Failed to load waypoints from '{target_path}': {e}. Using defaults.")
+
+        return DEFAULT_WAYPOINTS
+
     def __init__(self):
         super().__init__('delivery_task_manager')
 
-        self.manager = TaskQueueManager()
+        self.declare_parameter('waypoints_file', '')
+        wp_param = self.get_parameter('waypoints_file').value if HAVE_ROS2 else ''
+        loaded_wps = self._load_waypoints(wp_param)
+        self.manager = TaskQueueManager(waypoints=loaded_wps)
         
-        # Position and goal tracking (spawn default at dock: x=7.06, y=-12.00)
-        self.current_x = 7.06
-        self.current_y = -12.00
+        # Position and goal tracking (spawn default at dock)
+        dock_wp = self.manager.waypoints.get("Dock", {})
+        self.current_x = float(dock_wp.get("x", 7.06))
+        self.current_y = float(dock_wp.get("y", -12.00))
         self.target_coords = None
         self.target_name = None
         self.dwell_start_time = None
@@ -361,12 +400,32 @@ class DeliveryTaskManagerNode(Node):
         except Exception as e:
             self.get_logger().warn(f"Goal response exception: {e}")
 
+    def trigger_arrival(self):
+        """Called when robot reaches destination (via TF distance or Nav2 success)."""
+        if self.manager.robot_state in ["navigating", "en_route", "at_table"]:
+            if self.dwell_start_time is None:
+                self.dwell_start_time = time.time()
+                self.manager.robot_state = "at_table"
+                self.get_logger().info(f"Reached destination '{self.target_name}'. Handing over delivery...")
+                self.publish_status()
+        elif self.manager.robot_state == "docking":
+            self.manager.robot_state = "docked"
+            self.target_coords = None
+            self.target_name = None
+            self.current_goal_handle = None
+            dock_msg = Bool()
+            dock_msg.data = True
+            self.dock_pub.publish(dock_msg)
+            self.get_logger().info("Robot safely docked at charging dock.")
+            self.publish_status()
+
     def _goal_result_cb(self, future):
         try:
             res = future.result()
             status = res.status
             if status == GoalStatus.STATUS_SUCCEEDED:
                 self.get_logger().info(f"Nav2 trajectory to '{self.target_name}' reported SUCCESS.")
+                self.trigger_arrival()
             elif status in [GoalStatus.STATUS_ABORTED, GoalStatus.STATUS_CANCELED]:
                 self.get_logger().warn(f"Nav2 goal for '{self.target_name}' aborted or cancelled (status {status}).")
                 if self.manager.robot_state in ["navigating", "en_route"] and self.target_coords is not None:
@@ -445,6 +504,7 @@ class DeliveryTaskManagerNode(Node):
                         self.manager.robot_state = "navigating"
                         self.dispatch_goal(target, wp)
                         self.get_logger().info(f"Popped {task['id']} from queue -> en route to {target}!")
+                        self.publish_status()
 
     def publish_status(self):
         summary = self.manager.get_status_summary()
@@ -475,44 +535,34 @@ class DeliveryTaskManagerNode(Node):
             tx, ty = self.target_coords
             dist = math.sqrt((self.current_x - tx) ** 2 + (self.current_y - ty) ** 2)
 
-            if dist < 0.50:
-                if self.manager.robot_state in ["navigating", "en_route", "at_table"]:
-                    if self.dwell_start_time is None:
-                        self.dwell_start_time = time.time()
-                        self.manager.robot_state = "at_table"
-                        self.get_logger().info(f"Reached destination '{self.target_name}' (distance: {dist:.2f}m). Handing over delivery...")
-                    elif time.time() - self.dwell_start_time >= 3.0:
-                        finished = self.manager.complete_current_task(success=True)
-                        task_id = finished['id'] if finished else 'TASK'
-                        self.get_logger().info(f"Delivery completed for {task_id} at {self.target_name}! Robot now IDLE.")
-                        if self.current_goal_handle:
-                            try:
-                                self.current_goal_handle.cancel_goal_async()
-                            except Exception:
-                                pass
-                        self.dwell_start_time = None
-                        self.target_coords = None
-                        self.target_name = None
-                        self.current_goal_handle = None
-                        self.manager.robot_state = "idle"
-                        
-                        # Immediately check if more tasks are queued
-                        self.check_and_dispatch_next_task()
+            if dist < 0.75:
+                self.trigger_arrival()
 
-                elif self.manager.robot_state == "docking":
-                    self.manager.robot_state = "docked"
-                    self.target_coords = None
-                    self.target_name = None
-                    self.current_goal_handle = None
-                    dock_msg = Bool()
-                    dock_msg.data = True
-                    self.dock_pub.publish(dock_msg)
-                    self.get_logger().info("Robot safely docked at charging dock.")
+        # 2. Check dwell completion at table
+        if self.manager.robot_state == "at_table" and self.dwell_start_time is not None:
+            if time.time() - self.dwell_start_time >= 2.5:
+                finished = self.manager.complete_current_task(success=True)
+                task_id = finished['id'] if finished else 'TASK'
+                self.get_logger().info(f"Delivery completed for {task_id} at {self.target_name}! Robot now IDLE.")
+                if self.current_goal_handle:
+                    try:
+                        self.current_goal_handle.cancel_goal_async()
+                    except Exception:
+                        pass
+                self.dwell_start_time = None
+                self.target_coords = None
+                self.target_name = None
+                self.current_goal_handle = None
+                self.manager.robot_state = "idle"
+                self.publish_status()
+                
+                # Immediately check if more tasks are queued
+                self.check_and_dispatch_next_task()
 
-        # 2. Check queue dispatch if robot is ready
+        # 3. Check queue dispatch if robot is ready
         self.check_and_dispatch_next_task()
 
-        # 3. Publish system status summaries
+        # 4. Publish system status summaries
         self.publish_status()
 
 

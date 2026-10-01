@@ -12,16 +12,37 @@ def generate_launch_description():
 
     rviz_config_file = os.path.join(pkg_cstam_navigation, 'config', 'slam_demo.rviz')
 
+    world_arg = DeclareLaunchArgument(
+        'world',
+        default_value='restaurant.world',
+        description='World file name (e.g. restaurant.world, resto_arbi.world)'
+    )
+    spawn_x_arg = DeclareLaunchArgument(
+        'spawn_x',
+        default_value='7.06',
+        description='Spawn X coordinate'
+    )
+    spawn_y_arg = DeclareLaunchArgument(
+        'spawn_y',
+        default_value='-12.0',
+        description='Spawn Y coordinate'
+    )
+    spawn_yaw_arg = DeclareLaunchArgument(
+        'spawn_yaw',
+        default_value='1.57',
+        description='Spawn Yaw (radians)'
+    )
+
     # 1. Launch Gazebo Simulation with Restaurant World & BellaBot Robot
     gazebo_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_cstam_gazebo, 'launch', 'spawn_cstam_robot.launch.py')
         ),
         launch_arguments={
-            'world': 'restaurant.world',
-            'spawn_x': '7.06',
-            'spawn_y': '-12.0',
-            'spawn_yaw': '1.57'
+            'world': LaunchConfiguration('world'),
+            'spawn_x': LaunchConfiguration('spawn_x'),
+            'spawn_y': LaunchConfiguration('spawn_y'),
+            'spawn_yaw': LaunchConfiguration('spawn_yaw')
         }.items()
     )
 
@@ -43,6 +64,10 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        world_arg,
+        spawn_x_arg,
+        spawn_y_arg,
+        spawn_yaw_arg,
         gazebo_launch,
         slam_launch,
         rviz_node
