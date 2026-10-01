@@ -33,9 +33,18 @@ except ImportError:
 try:
     from rclpy.action import ActionClient
     from nav2_msgs.action import NavigateToPose  # type: ignore
+    from action_msgs.msg import GoalStatus  # type: ignore
     HAVE_NAV2 = True
 except ImportError:
     HAVE_NAV2 = False
+    class GoalStatus:  # type: ignore
+        STATUS_UNKNOWN = 0
+        STATUS_ACCEPTED = 1
+        STATUS_EXECUTING = 2
+        STATUS_CANCELING = 3
+        STATUS_SUCCEEDED = 4
+        STATUS_CANCELED = 5
+        STATUS_ABORTED = 6
 
 
 # Predefined Waypoints matching restaurant.world layout (24 Dining Tables Service Points, Kitchen, Dock)
@@ -343,11 +352,40 @@ class DeliveryTaskManagerNode(Node):
             goal_handle = future.result()
             if not goal_handle.accepted:
                 self.get_logger().warn(f"Nav2 Goal for '{self.target_name}' was rejected by server!")
+                self._handle_navigation_failure("Goal rejected by Nav2 server")
                 return
             self.current_goal_handle = goal_handle
             self.get_logger().info(f"Nav2 Goal for '{self.target_name}' accepted by server.")
+            result_future = goal_handle.get_result_async()
+            result_future.add_done_callback(self._goal_result_cb)
         except Exception as e:
             self.get_logger().warn(f"Goal response exception: {e}")
+
+    def _goal_result_cb(self, future):
+        try:
+            res = future.result()
+            status = res.status
+            if status == GoalStatus.STATUS_SUCCEEDED:
+                self.get_logger().info(f"Nav2 trajectory to '{self.target_name}' reported SUCCESS.")
+            elif status in [GoalStatus.STATUS_ABORTED, GoalStatus.STATUS_CANCELED]:
+                self.get_logger().warn(f"Nav2 goal for '{self.target_name}' aborted or cancelled (status {status}).")
+                if self.manager.robot_state in ["navigating", "en_route"] and self.target_coords is not None:
+                    self._handle_navigation_failure(f"Nav2 aborted/cancelled trajectory (status {status})")
+        except Exception as e:
+            self.get_logger().warn(f"Goal result callback exception: {e}")
+
+    def _handle_navigation_failure(self, reason: str):
+        self.get_logger().error(f"Navigation failure encountered: {reason}. Aborting current task.")
+        failed_task = self.manager.complete_current_task(success=False)
+        tid = failed_task['id'] if failed_task else 'TASK'
+        self.get_logger().info(f"Task {tid} marked as failed. Transitioning robot to IDLE.")
+        self.dwell_start_time = None
+        self.target_coords = None
+        self.target_name = None
+        self.current_goal_handle = None
+        self.manager.robot_state = "idle"
+        self.check_and_dispatch_next_task()
+        self.publish_status()
 
     def dispatch_goal(self, target_name: str, wp: dict):
         x = float(wp.get('x', 0.0))
@@ -447,6 +485,11 @@ class DeliveryTaskManagerNode(Node):
                         finished = self.manager.complete_current_task(success=True)
                         task_id = finished['id'] if finished else 'TASK'
                         self.get_logger().info(f"Delivery completed for {task_id} at {self.target_name}! Robot now IDLE.")
+                        if self.current_goal_handle:
+                            try:
+                                self.current_goal_handle.cancel_goal_async()
+                            except Exception:
+                                pass
                         self.dwell_start_time = None
                         self.target_coords = None
                         self.target_name = None
