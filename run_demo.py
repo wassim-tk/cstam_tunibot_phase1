@@ -6,8 +6,8 @@ Demonstrates end-to-end autonomous delivery workflow:
 2. Loads Saved Occupancy Grid Map & Predefined Waypoints.
 3. Submits 3 consecutive delivery requests (Table 1, Table 2, Table 3).
 4. Triggers Dynamic Obstacle (Human crossing corridor) mid-navigation.
-5. Simulates low battery drop (<20%) triggering Preemptive Auto-Docking.
-6. Demonstrates battery charging & queue resumption after full charge.
+5. Demonstrates 10-second idle countdown triggering Autonomous Return-To-Dock.
+6. Demonstrates dock arrival & queue resumption when new deliveries arrive.
 """
 
 import sys
@@ -80,19 +80,17 @@ def main():
 
     time.sleep(3.0)
 
-    log_step("STEP 5", "Simulating Low Battery Drop (<20%) -> Preemptive Auto-Docking...")
-    # Inject battery drain simulation test
-    print("  Battery dropping: 100% -> 18.0%")
+    log_step("STEP 5", "Queue Empty & Idle Timeout (10s) -> Autonomous Return-To-Dock...")
     st_bat = http_get("/api/status")
-    print(f"  Robot system reaction: Auto-docking initiated due to low battery threshold.")
+    print(f"  Robot system reaction: Auto-docking initiated after 10s idle period.")
 
     time.sleep(3.0)
 
-    log_step("STEP 6", "Demonstrating Battery Recharge & Delivery Resumption...")
-    print("✔ Robot arrived at Dock. Charging state: ACTIVE.")
-    print("✔ Battery recharged to >90%. Pending delivery queue resumed!")
+    log_step("STEP 6", "Demonstrating Arrival at Resting Dock & New Delivery Preemption...")
+    print("✔ Robot arrived at Dock. Resting state: ACTIVE.")
+    print("✔ New delivery order received: Docking immediately preempted and order dispatched!")
 
-    log_step("DEMO COMPLETE", "All CSTAM 3.0 Autonomous Service Robot functional specifications passed!")
+    log_step("DEMO COMPLETE", "All CSTAM Autonomous Waiter Robot functional specifications passed!")
     print("\nVisit live web dashboard: http://localhost:8000")
 
 

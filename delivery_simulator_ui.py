@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 """
-CSTAM Phase 1: Delivery Process Simulator Interface & Mission Control Dashboard
-Native graphical & interactive interface to simulate placing food/beverage orders,
-monitoring the delivery queue, and testing auto-docking behavior across multiple worlds:
+CSTAM: Delivery Process Simulator Interface & Mission Control Dashboard
+Native graphical and interactive interface to simulate placing food/beverage orders,
+monitoring the delivery queue, and testing autonomous docking behavior across worlds:
 - Dar Tunibot (resto_arbi.world: Table 1 to Table 10, Kitchen/Pickup, Dock)
 - Restaurant Lounge (restaurant.world: Table 0 to Table 23, Kitchen/Pickup, Dock)
 """
@@ -333,7 +333,7 @@ class DeliverySimulatorGUI:
         dispatch_btn.pack(fill="x", pady=(14, 8))
 
         # Bottom Left: Auto-Docking Controls
-        dock_box = ttk.LabelFrame(left_col, text=" ⚡ Auto-Docking & Charging ", padding=10)
+        dock_box = ttk.LabelFrame(left_col, text=" ⚓ Auto-Docking & Resting Station ", padding=10)
         dock_box.pack(fill="x", side="bottom", pady=(8, 0))
 
         dock_btn_frame = tk.Frame(dock_box, bg="#1e1e24")
@@ -558,14 +558,14 @@ class DeliverySimulatorGUI:
             "AT_TABLE": ("#10b981", "#ffffff"),
             "DOCKING": ("#ec4899", "#ffffff"),
             "DOCKED": ("#10b981", "#ffffff"),
-            "CHARGING": ("#06b6d4", "#ffffff")
+            "RESTING": ("#06b6d4", "#ffffff")
         }
         bg_col, fg_col = badge_colors.get(state, ("#6b7280", "#ffffff"))
         self.state_badge.config(text=state, bg=bg_col, fg=fg_col)
 
         # Dock Badge
-        if self.bridge.is_docked or state in ["DOCKED", "CHARGING"]:
-            self.dock_badge.config(text="DOCKED (CHARGING)", bg="#10b981", fg="#ffffff")
+        if self.bridge.is_docked or state in ["DOCKED", "RESTING"]:
+            self.dock_badge.config(text="DOCKED (RESTING)", bg="#10b981", fg="#ffffff")
         elif state == "DOCKING":
             self.dock_badge.config(text="RETURNING TO DOCK", bg="#ec4899", fg="#ffffff")
         else:
@@ -585,9 +585,9 @@ class DeliverySimulatorGUI:
                 fg="#38bdf8", bg="#1f2937"
             )
         else:
-            if state in ["DOCKED", "CHARGING"]:
+            if state in ["DOCKED", "RESTING"]:
                 self.active_task_card.config(
-                    text="Robot is docked at Charging Station.\nBattery maintenance in progress.",
+                    text="Robot is resting at Dock Station.\nAwaiting new delivery orders.",
                     fg="#4ade80", bg="#1f2937"
                 )
             elif state == "DOCKING":
@@ -635,7 +635,7 @@ class DeliverySimulatorGUI:
 def run_cli_mode(bridge: Ros2DeliveryBridge, initial_world: str):
     current_world = initial_world
     print("=" * 68)
-    print(f"  CSTAM Phase 1: Interactive Waiter Robot Delivery CLI Simulator")
+    print(f"  CSTAM: Interactive Waiter Robot Delivery CLI Simulator")
     print(f"  Active World: {current_world}")
     print("=" * 68)
     while True:

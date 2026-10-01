@@ -2,7 +2,7 @@
 # All delivery waypoints are located in free service aisles facing the tables with safe clearance.
 waypoints:
   Dock:
-    name: "Docking & Charging Station"
+    name: "Docking & Resting Station"
     x: 7.06
     y: -12.00
     z: 0.0

@@ -54,32 +54,27 @@ except ImportError:
         STATUS_ABORTED = 6
 
 
-# Predefined Waypoints matching restaurant.world layout (24 Dining Tables Service Points, Kitchen, Dock)
 DEFAULT_WAYPOINTS = {
     "Dock": {"x": 7.06, "y": -12.00, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
     "Kitchen/Pickup": {"x": -9.60, "y": -1.39, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 1.0, "qw": 0.0},
-    # Row 0 (North Terrace) Service Points in Aisle 0 (y = 0.50)
     "Table 0": {"x": -8.24, "y": 0.50, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
     "Table 1": {"x": -5.64, "y": 0.50, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
     "Table 2": {"x": -3.04, "y": 0.50, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
     "Table 3": {"x": -0.44, "y": 0.50, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
     "Table 4": {"x": 2.16, "y": 0.50, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
     "Table 5": {"x": 4.76, "y": 0.50, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
-    # Row 1 (Mid Lounge) Service Points in Main Promenade (y = -3.10)
     "Table 6": {"x": -8.24, "y": -3.10, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
     "Table 7": {"x": -5.64, "y": -3.10, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
     "Table 8": {"x": -3.04, "y": -3.10, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
     "Table 9": {"x": -0.44, "y": -3.10, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
     "Table 10": {"x": 2.16, "y": -3.10, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
     "Table 11": {"x": 4.76, "y": -3.10, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": 0.7071, "qw": 0.7071},
-    # Row 2 (Central Dining Salon) Service Points in Main Promenade (y = -5.85)
     "Table 12": {"x": -8.24, "y": -5.85, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": -0.7071, "qw": 0.7071},
     "Table 13": {"x": -5.64, "y": -5.85, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": -0.7071, "qw": 0.7071},
     "Table 14": {"x": -3.04, "y": -5.85, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": -0.7071, "qw": 0.7071},
     "Table 15": {"x": -0.44, "y": -5.85, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": -0.7071, "qw": 0.7071},
     "Table 16": {"x": 2.16, "y": -5.85, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": -0.7071, "qw": 0.7071},
     "Table 17": {"x": 4.76, "y": -5.85, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": -0.7071, "qw": 0.7071},
-    # Row 3 (South Wing) Service Points in Aisle 2 (y = -9.45)
     "Table 18": {"x": -8.24, "y": -9.45, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": -0.7071, "qw": 0.7071},
     "Table 19": {"x": -5.64, "y": -9.45, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": -0.7071, "qw": 0.7071},
     "Table 20": {"x": -3.04, "y": -9.45, "z": 0.0, "qx": 0.0, "qy": 0.0, "qz": -0.7071, "qw": 0.7071},
@@ -91,8 +86,8 @@ DEFAULT_WAYPOINTS = {
 
 class TaskQueueManager:
     """
-    Core Task Queue and State Controller logic for Phase 1 MVP.
-    Decoupled from ROS 2 middleware for high testability and reliability.
+    Core Task Queue and State Controller logic.
+    Manages pending orders, dynamic modification, and task lifecycle.
     """
     def __init__(self, waypoints=None):
         self.waypoints = waypoints or DEFAULT_WAYPOINTS
@@ -107,12 +102,9 @@ class TaskQueueManager:
         target_clean = target_input.strip()
         if target_clean in self.waypoints:
             return target_clean
-        # Case-insensitive resolution
         lower = target_clean.lower()
         for wp in self.waypoints:
-            if wp.lower() == lower:
-                return wp
-            if wp.lower() == f"table {lower}":
+            if wp.lower() == lower or wp.lower() == f"table {lower}":
                 return wp
         return None
 
@@ -138,7 +130,6 @@ class TaskQueueManager:
         with self.lock:
             if not self.queue:
                 return None
-            
             task = self.queue.popleft()
             task["status"] = "en_route"
             self.current_task = task
@@ -184,12 +175,13 @@ class TaskQueueManager:
 
     def get_status_summary(self):
         with self.lock:
+            completed_success = sum(1 for t in self.task_history if t.get("status") == "completed")
             return {
                 "robot_state": self.robot_state,
                 "current_task": self.current_task,
                 "queue_length": len(self.queue),
                 "pending_tasks": list(self.queue),
-                "completed_count": len(self.task_history)
+                "completed_count": completed_success
             }
 
 
@@ -203,7 +195,11 @@ class DeliveryTaskManagerNode(Node):
             try:
                 from ament_index_python.packages import get_package_share_directory
                 pkg_nav = get_package_share_directory('cstam_navigation')
-                candidate = os.path.join(pkg_nav, 'config', 'waypoints.yaml')
+                env_world = os.environ.get('CSTAM_WORLD', '').lower()
+                if 'resto' in env_world or 'arbi' in env_world:
+                    candidate = os.path.join(pkg_nav, 'config', 'resto_arbi_waypoints.yaml')
+                else:
+                    candidate = os.path.join(pkg_nav, 'config', 'waypoints.yaml')
                 if os.path.exists(candidate):
                     target_path = candidate
             except Exception:
@@ -230,7 +226,7 @@ class DeliveryTaskManagerNode(Node):
         loaded_wps = self._load_waypoints(wp_param)
         self.manager = TaskQueueManager(waypoints=loaded_wps)
         
-        # Position and goal tracking (spawn default at dock)
+        # Position tracking and goal management
         dock_wp = self.manager.waypoints.get("Dock", {})
         self.current_x = float(dock_wp.get("x", 7.06))
         self.current_y = float(dock_wp.get("y", -12.00))
@@ -238,6 +234,11 @@ class DeliveryTaskManagerNode(Node):
         self.target_name = None
         self.dwell_start_time = None
         self.current_goal_handle = None
+        self.nav_goal_succeeded = False
+        self.dock_retry_count = 0
+        self.delivery_retry_count = 0
+        self.queue_empty_since = None
+        self.active_goal_id = 0
 
         # TF Buffer and Listener for accurate map-frame robot position
         if HAVE_ROS2:
@@ -266,9 +267,9 @@ class DeliveryTaskManagerNode(Node):
         self.create_subscription(String, '/dock_command', self.dock_command_cb, 10)
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.amcl_cb, 10)
 
-        # Control loop at 2Hz for prompt responsiveness
+        # Control loop at 2Hz for responsive execution
         self.timer = self.create_timer(0.5, self.control_loop)
-        self.get_logger().info("Delivery Task Manager Node active (Phase 1 Autonomous Queue Dispatch).")
+        self.get_logger().info("Delivery Task Manager Node active.")
 
     def amcl_cb(self, msg: PoseWithCovarianceStamped):
         self.current_x = msg.pose.pose.position.x
@@ -310,12 +311,15 @@ class DeliveryTaskManagerNode(Node):
                 resolved_target = res['task']['target']
                 self.get_logger().info(f"Accepted new delivery: {task_id} -> {resolved_target} ({item})")
                 
-                # If currently docking, preempt docking immediately for the new delivery task!
+                # Reset 10s auto-dock timer since queue is no longer empty
+                self.queue_empty_since = None
+
+                # If currently docking, preempt docking immediately for the new order
                 if self.manager.robot_state == "docking":
-                    self.get_logger().info("New delivery order received while DOCKING! Preempting docking sequence.")
+                    self.get_logger().info("New delivery order received while docking! Preempting docking sequence.")
                     self.stop_docking()
 
-                # Check for immediate dispatch if robot is ready (idle or docked)
+                # Dispatch next task if robot is ready
                 self.check_and_dispatch_next_task()
                 self.publish_status()
             else:
@@ -329,18 +333,19 @@ class DeliveryTaskManagerNode(Node):
             self.stop_docking()
         elif "DOCK_NOW" in cmd:
             if self.manager.robot_state != "docking":
+                self.dock_retry_count = 0
                 self.start_docking()
 
     def start_docking(self):
         dock_wp = self.manager.waypoints.get("Dock")
         if not dock_wp:
-            self.get_logger().error("Dock waypoint not found in waypoints configuration!")
+            self.get_logger().error("Dock waypoint not found in configuration.")
             return
 
         tx = float(dock_wp.get('x', 7.06))
         ty = float(dock_wp.get('y', -12.00))
 
-        # If robot is already within 0.60m of the dock waypoint
+        # Check if robot is already at dock (<0.60m)
         if self.current_x is not None and self.current_y is not None:
             dist = math.sqrt((self.current_x - tx) ** 2 + (self.current_y - ty) ** 2)
             if dist < 0.60:
@@ -354,8 +359,8 @@ class DeliveryTaskManagerNode(Node):
                 self.publish_status()
                 return
 
-        # Robot is away from dock -> route to dock
-        self.get_logger().info(f"Routing robot to Docking Station ({tx:.2f}, {ty:.2f}).")
+        # Navigate to resting dock
+        self.get_logger().info(f"Routing robot to Resting Dock Station ({tx:.2f}, {ty:.2f}).")
         self.manager.robot_state = "docking"
         self.dispatch_goal("Dock", dock_wp)
         self.publish_status()
@@ -367,77 +372,144 @@ class DeliveryTaskManagerNode(Node):
             self.manager.robot_state = "idle"
             self.target_coords = None
             self.target_name = None
+            self.queue_empty_since = None
             dock_msg = Bool()
             dock_msg.data = False
             self.dock_pub.publish(dock_msg)
             self.publish_status()
 
     def cancel_active_navigation(self):
+        self.active_goal_id += 1
         if self.current_goal_handle:
             try:
-                self.get_logger().info("Cancelling active Nav2 goal...")
                 self.current_goal_handle.cancel_goal_async()
             except Exception as e:
                 self.get_logger().warn(f"Exception cancelling goal: {e}")
             self.current_goal_handle = None
 
-        # Issue zero Twist to immediately stop robot base
+        # Stop robot base
         stop_cmd = Twist()
         for _ in range(3):
             self.cmd_vel_pub.publish(stop_cmd)
 
-    def _goal_response_cb(self, future):
+    def _goal_response_cb(self, future, goal_id: int, target_name: str):
+        if goal_id != self.active_goal_id:
+            try:
+                gh = future.result()
+                if gh and gh.accepted:
+                    gh.cancel_goal_async()
+            except Exception:
+                pass
+            return
+
         try:
             goal_handle = future.result()
             if not goal_handle.accepted:
-                self.get_logger().warn(f"Nav2 Goal for '{self.target_name}' was rejected by server!")
-                self._handle_navigation_failure("Goal rejected by Nav2 server")
+                self.get_logger().warn(f"Nav2 Goal #{goal_id} for '{target_name}' was rejected by server.")
+                if self.manager.robot_state == "docking":
+                    self._handle_docking_failure()
+                else:
+                    self._handle_delivery_failure()
                 return
             self.current_goal_handle = goal_handle
-            self.get_logger().info(f"Nav2 Goal for '{self.target_name}' accepted by server.")
+            self.get_logger().info(f"Nav2 Goal #{goal_id} for '{target_name}' accepted by server.")
             result_future = goal_handle.get_result_async()
-            result_future.add_done_callback(self._goal_result_cb)
+            result_future.add_done_callback(
+                lambda fut, gid=goal_id, tgt=target_name: self._goal_result_cb(fut, gid, tgt)
+            )
         except Exception as e:
             self.get_logger().warn(f"Goal response exception: {e}")
 
     def trigger_arrival(self):
-        """Called when robot reaches destination (via TF distance or Nav2 success)."""
+        """Called when robot reaches destination (via Nav2 success or arrival tolerance)."""
         if self.manager.robot_state in ["navigating", "en_route", "at_table"]:
             if self.dwell_start_time is None:
+                self.delivery_retry_count = 0
                 self.dwell_start_time = time.time()
                 self.manager.robot_state = "at_table"
                 self.get_logger().info(f"Reached destination '{self.target_name}'. Handing over delivery...")
                 self.publish_status()
         elif self.manager.robot_state == "docking":
             self.manager.robot_state = "docked"
+            self.dock_retry_count = 0
             self.target_coords = None
             self.target_name = None
             self.current_goal_handle = None
+
+            # Brake robot base cleanly at dock
+            stop_cmd = Twist()
+            for _ in range(3):
+                self.cmd_vel_pub.publish(stop_cmd)
+
             dock_msg = Bool()
             dock_msg.data = True
             self.dock_pub.publish(dock_msg)
-            self.get_logger().info("Robot safely docked at charging dock.")
+            self.get_logger().info("Robot safely parked at resting dock.")
             self.publish_status()
 
-    def _goal_result_cb(self, future):
+    def _goal_result_cb(self, future, goal_id: int, target_name: str):
+        if goal_id != self.active_goal_id:
+            self.get_logger().info(f"Ignoring stale Nav2 result for goal #{goal_id} ('{target_name}'). Active goal is #{self.active_goal_id}.")
+            return
+
         try:
             res = future.result()
             status = res.status
             if status == GoalStatus.STATUS_SUCCEEDED:
-                self.get_logger().info(f"Nav2 trajectory to '{self.target_name}' reported SUCCESS.")
+                self.get_logger().info(f"Nav2 trajectory for goal #{goal_id} ('{target_name}') reported SUCCESS.")
+                self.nav_goal_succeeded = True
                 self.trigger_arrival()
             elif status in [GoalStatus.STATUS_ABORTED, GoalStatus.STATUS_CANCELED]:
-                self.get_logger().warn(f"Nav2 goal for '{self.target_name}' aborted or cancelled (status {status}).")
-                if self.manager.robot_state in ["navigating", "en_route"] and self.target_coords is not None:
-                    self._handle_navigation_failure(f"Nav2 aborted/cancelled trajectory (status {status})")
+                self.get_logger().warn(f"Nav2 goal #{goal_id} for '{target_name}' aborted or cancelled (status {status}).")
+                if self.manager.robot_state == "docking":
+                    self._handle_docking_failure()
+                elif self.manager.robot_state in ["navigating", "en_route"] and self.target_coords is not None:
+                    self._handle_delivery_failure()
         except Exception as e:
             self.get_logger().warn(f"Goal result callback exception: {e}")
 
-    def _handle_navigation_failure(self, reason: str):
-        self.get_logger().error(f"Navigation failure encountered: {reason}. Aborting current task.")
-        failed_task = self.manager.complete_current_task(success=False)
-        tid = failed_task['id'] if failed_task else 'TASK'
-        self.get_logger().info(f"Task {tid} marked as failed. Transitioning robot to IDLE.")
+    def _handle_docking_failure(self):
+        self.dock_retry_count += 1
+        if self.dock_retry_count <= 2:
+            self.get_logger().warn(f"Docking goal aborted by Nav2. Retrying docking attempt {self.dock_retry_count}/2...")
+            dock_wp = self.manager.waypoints.get("Dock")
+            if dock_wp:
+                self.current_goal_handle = None
+                self.dispatch_goal("Dock", dock_wp)
+                return
+
+        self.get_logger().warn("Docking procedure failed after retries. Resetting robot state to IDLE.")
+        self.dock_retry_count = 0
+        self.target_coords = None
+        self.target_name = None
+        self.current_goal_handle = None
+        self.manager.robot_state = "idle"
+        dock_msg = Bool()
+        dock_msg.data = False
+        self.dock_pub.publish(dock_msg)
+        self.publish_status()
+
+    def _handle_delivery_failure(self):
+        self.delivery_retry_count += 1
+        if self.delivery_retry_count <= 2:
+            self.get_logger().warn(f"Delivery goal for '{self.target_name}' aborted by Nav2. Retrying attempt {self.delivery_retry_count}/2...")
+            target = self.target_name
+            wp = self.manager.waypoints.get(target) if target else None
+            if wp:
+                self.current_goal_handle = None
+                self.dispatch_goal(target, wp)
+                return
+
+        # If retries exhausted, keep task in queue so it is never dropped or skipped
+        self.get_logger().warn(f"Delivery to '{self.target_name}' postponed after retries. Keeping order in queue.")
+        self.delivery_retry_count = 0
+        if self.manager.current_task:
+            with self.manager.lock:
+                task = self.manager.current_task
+                task["status"] = "queued"
+                self.manager.queue.append(task)
+                self.manager.current_task = None
+
         self.dwell_start_time = None
         self.target_coords = None
         self.target_name = None
@@ -466,8 +538,11 @@ class DeliveryTaskManagerNode(Node):
         self.target_coords = (x, y)
         self.target_name = target_name
         self.dwell_start_time = None
+        self.nav_goal_succeeded = False
 
-        # Cancel any previous action goal if active
+        self.active_goal_id += 1
+        goal_id = self.active_goal_id
+
         if self.current_goal_handle:
             try:
                 self.current_goal_handle.cancel_goal_async()
@@ -475,22 +550,23 @@ class DeliveryTaskManagerNode(Node):
                 pass
             self.current_goal_handle = None
 
-        # Send via Nav2 Action Client if available and ready, else fallback to /goal_pose
-        if self.nav_action_client and self.nav_action_client.server_is_ready():
+        if self.nav_action_client and (self.nav_action_client.server_is_ready() or self.nav_action_client.wait_for_server(timeout_sec=0.2)):
             action_goal = NavigateToPose.Goal()
             action_goal.pose = goal
             send_goal_future = self.nav_action_client.send_goal_async(action_goal)
-            send_goal_future.add_done_callback(self._goal_response_cb)
+            send_goal_future.add_done_callback(
+                lambda fut, gid=goal_id, tgt=target_name: self._goal_response_cb(fut, gid, tgt)
+            )
         else:
             self.goal_pub.publish(goal)
 
-        self.get_logger().info(f"Dispatched Nav2 Goal for '{target_name}' at ({x:.2f}, {y:.2f})")
+        self.get_logger().info(f"Dispatched Nav2 Goal #{goal_id} for '{target_name}' at ({x:.2f}, {y:.2f})")
 
     def check_and_dispatch_next_task(self):
         """Dispatches the next order from the queue if the robot is idle or docked."""
         if self.manager.robot_state in ["idle", "docked"]:
             if self.manager.queue:
-                # If docked, notify undock
+                self.queue_empty_since = None
                 if self.manager.robot_state == "docked":
                     dock_msg = Bool()
                     dock_msg.data = False
@@ -501,6 +577,21 @@ class DeliveryTaskManagerNode(Node):
                     target = task["target"]
                     wp = self.manager.waypoints.get(target)
                     if wp:
+                        tx = float(wp.get('x', 0.0))
+                        ty = float(wp.get('y', 0.0))
+
+                        # Check if robot is already at this table (<0.35m)
+                        if self.current_x is not None and self.current_y is not None:
+                            d = math.sqrt((self.current_x - tx) ** 2 + (self.current_y - ty) ** 2)
+                            if d < 0.35 and target != "Dock":
+                                self.get_logger().info(f"Robot is already at {target} (dist: {d:.2f}m). Serving delivery {task['id']} directly.")
+                                self.target_coords = (tx, ty)
+                                self.target_name = target
+                                self.manager.robot_state = "at_table"
+                                self.dwell_start_time = time.time()
+                                self.publish_status()
+                                return
+
                         self.manager.robot_state = "navigating"
                         self.dispatch_goal(target, wp)
                         self.get_logger().info(f"Popped {task['id']} from queue -> en route to {target}!")
@@ -519,23 +610,26 @@ class DeliveryTaskManagerNode(Node):
     def control_loop(self):
         # 0. Query TF for exact robot pose in map frame
         if self.tf_buffer:
-            try:
-                t = self.tf_buffer.lookup_transform(
-                    'map', 'base_footprint',
-                    rclpy.time.Time(),
-                    timeout=rclpy.duration.Duration(seconds=0.04)
-                )
-                self.current_x = t.transform.translation.x
-                self.current_y = t.transform.translation.y
-            except Exception:
-                pass
+            for frame in ['base_footprint', 'base_link']:
+                try:
+                    t = self.tf_buffer.lookup_transform(
+                        'map', frame,
+                        rclpy.time.Time(),
+                        timeout=rclpy.duration.Duration(seconds=0.04)
+                    )
+                    self.current_x = t.transform.translation.x
+                    self.current_y = t.transform.translation.y
+                    break
+                except Exception:
+                    pass
 
         # 1. Monitor active movement and arrival at table or dock
         if self.target_coords is not None and self.current_x is not None:
             tx, ty = self.target_coords
             dist = math.sqrt((self.current_x - tx) ** 2 + (self.current_y - ty) ** 2)
 
-            if dist < 0.75:
+            # Trigger arrival if within tight tolerance or Nav2 reported success
+            if dist < 0.35 or self.nav_goal_succeeded:
                 self.trigger_arrival()
 
         # 2. Check dwell completion at table
@@ -544,25 +638,39 @@ class DeliveryTaskManagerNode(Node):
                 finished = self.manager.complete_current_task(success=True)
                 task_id = finished['id'] if finished else 'TASK'
                 self.get_logger().info(f"Delivery completed for {task_id} at {self.target_name}! Robot now IDLE.")
-                if self.current_goal_handle:
-                    try:
-                        self.current_goal_handle.cancel_goal_async()
-                    except Exception:
-                        pass
+                
+                # Stop robot cleanly
+                stop_cmd = Twist()
+                for _ in range(2):
+                    self.cmd_vel_pub.publish(stop_cmd)
+
                 self.dwell_start_time = None
                 self.target_coords = None
                 self.target_name = None
                 self.current_goal_handle = None
+                self.nav_goal_succeeded = False
                 self.manager.robot_state = "idle"
                 self.publish_status()
                 
-                # Immediately check if more tasks are queued
+                # Check next task in queue
                 self.check_and_dispatch_next_task()
 
         # 3. Check queue dispatch if robot is ready
         self.check_and_dispatch_next_task()
 
-        # 4. Publish system status summaries
+        # 4. Auto-docking countdown: exactly 10s from the second queue is empty and robot is idle
+        if self.manager.robot_state == "idle" and len(self.manager.queue) == 0 and self.manager.current_task is None:
+            if self.queue_empty_since is None:
+                self.queue_empty_since = time.time()
+                self.get_logger().info("Queue is empty and robot is idle. 10-second auto-dock countdown started.")
+            elif time.time() - self.queue_empty_since >= 10.0:
+                self.get_logger().info("10 seconds elapsed since queue became empty. Triggering auto-docking.")
+                self.queue_empty_since = None
+                self.start_docking()
+        else:
+            self.queue_empty_since = None
+
+        # 5. Publish system status summaries
         self.publish_status()
 
 

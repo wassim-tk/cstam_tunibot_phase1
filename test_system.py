@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-CSTAM Phase 1: Core Functionalities MVP Verification Suite
+CSTAM: System Verification Test Suite
 Tests:
-1. Workspace & Phase 1 Deliverables Integrity
+1. Workspace Deliverables Integrity
 2. Mapping & Waypoints Data Integrity
 3. Delivery Task Management Queue Lifecycle
 4. Auto-Docking State Machine Idle Triggers
@@ -20,9 +20,9 @@ from cstam_core.delivery_task_manager import TaskQueueManager, DEFAULT_WAYPOINTS
 from cstam_core.docking_controller import AutoDockingController
 
 
-class Phase1SystemVerificationTests(unittest.TestCase):
+class CstamSystemVerificationTests(unittest.TestCase):
 
-    def test_phase1_files_exist(self):
+    def test_required_files_exist(self):
         required_paths = [
             "ros2_ws/src/cstam_gazebo/package.xml",
             "ros2_ws/src/cstam_gazebo/urdf/cstam_robot.urdf.xacro",
@@ -45,7 +45,7 @@ class Phase1SystemVerificationTests(unittest.TestCase):
         ]
         for rel_path in required_paths:
             full_p = os.path.normpath(os.path.join(os.getcwd(), rel_path))
-            self.assertTrue(os.path.exists(full_p), f"Missing required Phase 1 deliverable: {rel_path}")
+            self.assertTrue(os.path.exists(full_p), f"Missing required system deliverable: {rel_path}")
 
     def test_predefined_waypoints(self):
         # 24 tables + Kitchen + Dock

@@ -1,5 +1,5 @@
 #!/bin/bash
-# CSTAM Phase 1: Launch Delivery Process Simulator Interface
+# CSTAM: Launch Delivery Process Simulator Interface
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
@@ -14,7 +14,7 @@ fi
 export PYTHONPATH="$SCRIPT_DIR/ros2_ws/src/cstam_core:$PYTHONPATH"
 
 echo "=========================================================="
-echo " Starting CSTAM Phase 1: Delivery Process Simulator UI"
+echo " Starting CSTAM Delivery Process Simulator UI"
 echo "=========================================================="
 
 python3 delivery_simulator_ui.py "$@"

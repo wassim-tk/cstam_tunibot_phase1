@@ -13,10 +13,10 @@ except ImportError:
 
 class AutoDockingController:
     """
-    Auto-docking State Machine controller (Phase 1 MVP).
-    Manages return-to-dock sequence on idle timeout (15s) and manual triggers.
+    Auto-docking state controller.
+    Manages return-to-dock sequence on idle timeout and manual triggers.
     """
-    def __init__(self, idle_timeout=5.0):
+    def __init__(self, idle_timeout=10.0):
         self.idle_timeout = float(idle_timeout)
         self.idle_since = None
         self.is_docked = False
@@ -41,7 +41,8 @@ class AutoDockingController:
                 return 'dock_idle'
         else:
             self.idle_since = None
-            self.is_docking_in_progress = False
+            if not is_navigating:
+                self.is_docking_in_progress = False
 
         return 'none'
 
@@ -51,12 +52,11 @@ if HAVE_ROS2:
         def __init__(self):
             super().__init__('docking_controller')
 
-            self.declare_parameter('idle_timeout', 5.0)
+            self.declare_parameter('idle_timeout', 10.0)
             idle_t = self.get_parameter('idle_timeout').value
 
             self.controller = AutoDockingController(idle_t)
 
-            self.dock_pub = self.create_publisher(Bool, '/dock_state', 10)
             self.command_pub = self.create_publisher(String, '/dock_command', 10)
 
             self.create_subscription(String, '/delivery_queue_status', self.queue_status_cb, 10)
@@ -66,29 +66,38 @@ if HAVE_ROS2:
             self.is_navigating = False
 
             self.timer = self.create_timer(1.0, self.timer_callback)
-            self.get_logger().info("Docking Controller Node operational (Phase 1 Idle Auto-Docking).")
+            self.get_logger().info("Docking Controller Node operational.")
 
         def queue_status_cb(self, msg: String):
             try:
                 data = json.loads(msg.data)
-                self.queue_empty = data.get('queue_length', 0) == 0
+                q_len = data.get('queue_length', 0)
+                has_curr = data.get('current_task') is not None
+                self.queue_empty = (q_len == 0 and not has_curr)
                 state = data.get('robot_state', 'idle')
-                self.is_navigating = state in ['navigating', 'en_route', 'at_table', 'delivering']
-                if not self.queue_empty:
+                self.is_navigating = state in ['navigating', 'en_route', 'at_table', 'delivering', 'docking']
+                
+                # Preempt docking immediately if new task is queued
+                if not self.queue_empty and state == 'docking':
+                    self.get_logger().info("New order detected while docking. Cancelling docking sequence.")
+                    stop_msg = String()
+                    stop_msg.data = "STOP_DOCK"
+                    self.command_pub.publish(stop_msg)
+                    self.controller.is_docking_in_progress = False
+
+                if not self.queue_empty or state in ['idle', 'docked']:
                     self.controller.is_docking_in_progress = False
             except Exception:
                 pass
 
         def dock_state_cb(self, msg: Bool):
             self.controller.is_docked = msg.data
+            if msg.data:
+                self.controller.is_docking_in_progress = False
 
         def timer_callback(self):
             now = time.time()
             action = self.controller.evaluate_dock_trigger(self.queue_empty, self.is_navigating, now)
-            
-            dock_msg = Bool()
-            dock_msg.data = self.controller.is_docked
-            self.dock_pub.publish(dock_msg)
 
             if action == 'dock_idle' and not self.controller.is_docking_in_progress and not self.controller.is_docked:
                 self.get_logger().info(f"Triggering auto-docking sequence. Reason: {action}")

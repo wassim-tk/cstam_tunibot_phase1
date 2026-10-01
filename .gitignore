@@ -23,7 +23,10 @@ venv/
 .venv/
 docs/venv/
 
+# Documentation - ignore all docs other than README.md and CSTAM-BOOK.pdf
+docs/*
+!docs/README.md
+!docs/CSTAM-BOOK.pdf
 
-# Non-Phase 1 Archive
+# Archived modules
 archive_non_phase1/
-

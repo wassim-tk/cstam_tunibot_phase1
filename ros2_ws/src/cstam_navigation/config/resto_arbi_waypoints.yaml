@@ -1,8 +1,8 @@
 # CSTAM Waiter Delivery Service Robot - Dar Tunibot (resto_arbi.world) Waypoints Configuration
-# Safe approach waypoints facing tables, kitchen counter, and charging dock with high clearance.
+# Safe approach waypoints facing tables, kitchen counter, and resting dock with high clearance.
 waypoints:
   Dock:
-    name: "Charging & Maintenance Dock (West Wall)"
+    name: "Resting & Staging Dock (West Wall)"
     x: -10.0
     y: -1.45
     z: 0.0
