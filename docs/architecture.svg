@@ -1,0 +1,229 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1820" height="1180" viewBox="0 0 1820 1180" font-family="Liberation Sans, DejaVu Sans, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
+    </marker>
+    <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c2410c"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <style>
+      .band-label { font-size: 13px; font-weight: 700; letter-spacing: 1.5px; }
+      .title { font-size: 18px; font-weight: 700; fill: #0f172a; }
+      .sub { font-size: 13px; fill: #475569; }
+      .mono { font-family: Liberation Mono, DejaVu Sans Mono, monospace; font-size: 12.5px; fill: #1e293b; }
+      .topic { font-family: Liberation Mono, DejaVu Sans Mono, monospace; font-size: 12.5px; fill: #0f172a; }
+      .chip { font-size: 12.5px; fill: #1e293b; }
+      .box { fill: #ffffff; stroke-width: 1.6; }
+      .edge { stroke: #334155; stroke-width: 1.8; fill: none; }
+      .action { stroke: #c2410c; stroke-width: 2.4; fill: none; }
+      .dashed { stroke: #64748b; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+    </style>
+  </defs>
+
+  <rect width="1820" height="1180" fill="#f8fafc"/>
+
+  <!-- Header -->
+  <text x="60" y="48" font-size="26" font-weight="700" fill="#0f172a">CSTAM-TUNIBOT — High-Level Software Architecture</text>
+  <text x="60" y="74" class="sub">Autonomous waiter robot for indoor delivery · ROS 2 Jazzy · Nav2 · Gazebo Sim</text>
+
+  <!-- ===================== LAYER BANDS ===================== -->
+  <rect x="60" y="100" width="1340" height="120" rx="14" fill="#eef2ff" stroke="#c7d2fe"/>
+  <text x="240" y="126" class="band-label" fill="#4338ca">① OPERATOR INTERFACE</text>
+
+  <rect x="60" y="300" width="1340" height="180" rx="14" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <text x="240" y="326" class="band-label" fill="#047857">② MISSION ORCHESTRATION · cstam_core</text>
+
+  <rect x="60" y="560" width="1340" height="210" rx="14" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="240" y="586" class="band-label" fill="#c2410c">③ NAVIGATION &amp; LOCALIZATION · cstam_navigation</text>
+
+  <rect x="60" y="850" width="1340" height="240" rx="14" fill="#f0f9ff" stroke="#bae6fd"/>
+  <text x="240" y="876" class="band-label" fill="#0369a1">④ SIMULATION &amp; ROBOT MODEL · cstam_gazebo</text>
+
+  <!-- ===================== LAYER 1 ===================== -->
+  <rect x="470" y="115" width="460" height="85" rx="10" class="box" stroke="#6366f1"/>
+  <text x="700" y="145" text-anchor="middle" class="title">Mission Control Simulator</text>
+  <text x="700" y="166" text-anchor="middle" class="mono">delivery_simulator_ui.py</text>
+  <text x="700" y="186" text-anchor="middle" class="sub">Tkinter GUI  ·  headless CLI fallback (--cli)</text>
+
+  <!-- UI <-> Task Manager -->
+  <line x1="720" y1="200" x2="720" y2="328" class="edge" marker-end="url(#a)"/>
+  <text x="706" y="244" text-anchor="end" class="topic">/delivery_request</text>
+  <text x="706" y="262" text-anchor="end" class="topic">/delivery_task_action</text>
+  <text x="706" y="280" text-anchor="end" class="topic">/dock_command</text>
+  <text x="706" y="232" text-anchor="end" font-size="11" fill="#64748b">orders &amp; commands ▼</text>
+
+  <line x1="880" y1="328" x2="880" y2="202" class="edge" marker-end="url(#a)"/>
+  <text x="894" y="232" font-size="11" fill="#64748b">▲ live status</text>
+  <text x="894" y="244" class="topic">/delivery_queue_status</text>
+  <text x="894" y="262" class="topic">/robot_system_state</text>
+  <text x="894" y="280" class="topic">/dock_state</text>
+
+  <!-- ===================== LAYER 2 ===================== -->
+  <rect x="100" y="345" width="320" height="105" rx="10" class="box" stroke="#10b981"/>
+  <text x="260" y="375" text-anchor="middle" class="title">Docking Controller</text>
+  <text x="260" y="396" text-anchor="middle" class="mono">docking_controller.py</text>
+  <text x="260" y="420" text-anchor="middle" class="sub">Auto return-to-dock when</text>
+  <text x="260" y="437" text-anchor="middle" class="sub">the delivery queue is empty</text>
+
+  <line x1="420" y1="372" x2="638" y2="372" class="edge" marker-end="url(#a)"/>
+  <text x="529" y="364" text-anchor="middle" class="topic">/dock_command</text>
+  <line x1="638" y1="420" x2="422" y2="420" class="edge" marker-end="url(#a)"/>
+  <text x="529" y="438" text-anchor="middle" class="topic">/delivery_queue_status</text>
+  <text x="529" y="454" text-anchor="middle" class="topic">/dock_state</text>
+
+  <rect x="640" y="330" width="620" height="130" rx="10" class="box" stroke="#10b981" stroke-width="2.2"/>
+  <text x="950" y="358" text-anchor="middle" class="title">Delivery Task Manager</text>
+  <text x="950" y="378" text-anchor="middle" class="mono">delivery_task_manager.py</text>
+  <g>
+    <rect x="662" y="396" width="180" height="46" rx="8" fill="#d1fae5"/>
+    <text x="752" y="415" text-anchor="middle" class="chip" font-weight="700">TaskQueueManager</text>
+    <text x="752" y="432" text-anchor="middle" class="chip">FIFO order queue</text>
+    <rect x="860" y="396" width="180" height="46" rx="8" fill="#d1fae5"/>
+    <text x="950" y="415" text-anchor="middle" class="chip" font-weight="700">Waypoint Resolver</text>
+    <text x="950" y="432" text-anchor="middle" class="chip">table name → pose</text>
+    <rect x="1058" y="396" width="180" height="46" rx="8" fill="#d1fae5"/>
+    <text x="1148" y="415" text-anchor="middle" class="chip" font-weight="700">Robot State Machine</text>
+    <text x="1148" y="432" text-anchor="middle" class="chip">idle · delivering · docking</text>
+  </g>
+
+  <!-- TM <-> Nav2 action -->
+  <line x1="1120" y1="463" x2="1120" y2="597" class="action" marker-start="url(#ao)" marker-end="url(#ao)"/>
+  <text x="1134" y="514" font-size="13" font-weight="700" fill="#c2410c">NavigateToPose action</text>
+  <text x="1134" y="532" class="topic">navigate_to_pose</text>
+  <text x="1134" y="548" font-size="11" fill="#64748b">goal ▼  feedback / result ▲</text>
+
+  <!-- AMCL -> TM -->
+  <path d="M 210 610 L 210 520 L 760 520 L 760 463" class="edge" marker-end="url(#a)"/>
+  <text x="480" y="512" text-anchor="middle" class="topic">/amcl_pose  (current robot pose)</text>
+
+  <!-- ===================== LAYER 3 ===================== -->
+  <rect x="90" y="610" width="230" height="130" rx="10" class="box" stroke="#f97316"/>
+  <text x="205" y="640" text-anchor="middle" class="title">AMCL</text>
+  <text x="205" y="662" text-anchor="middle" class="sub">Particle-filter</text>
+  <text x="205" y="680" text-anchor="middle" class="sub">localization on the</text>
+  <text x="205" y="698" text-anchor="middle" class="sub">static map</text>
+
+  <rect x="360" y="610" width="200" height="130" rx="10" class="box" stroke="#f97316"/>
+  <text x="460" y="640" text-anchor="middle" class="title">Map Server</text>
+  <text x="460" y="664" text-anchor="middle" class="mono">maps/*.pgm|yaml</text>
+  <text x="460" y="686" text-anchor="middle" class="sub">cstam_map /</text>
+  <text x="460" y="704" text-anchor="middle" class="sub">resto_arbi_map</text>
+
+  <line x1="360" y1="672" x2="322" y2="672" class="edge" marker-end="url(#a)"/>
+  <text x="341" y="663" text-anchor="middle" class="topic" font-size="11">/map</text>
+
+  <rect x="600" y="610" width="200" height="130" rx="10" class="box" stroke="#94a3b8" stroke-dasharray="6 5"/>
+  <text x="700" y="640" text-anchor="middle" class="title">SLAM Toolbox</text>
+  <text x="700" y="662" text-anchor="middle" class="sub">mapping mode only</text>
+  <text x="700" y="682" text-anchor="middle" class="mono">mapping_demo</text>
+  <text x="700" y="698" text-anchor="middle" class="mono">.launch.py</text>
+  <text x="700" y="722" text-anchor="middle" class="sub">→ save_map.sh</text>
+
+  <line x1="600" y1="672" x2="562" y2="672" class="dashed" marker-end="url(#ag)"/>
+
+  <rect x="840" y="600" width="530" height="150" rx="10" class="box" stroke="#f97316" stroke-width="2.2"/>
+  <text x="1105" y="628" text-anchor="middle" class="title">Nav2 Navigation Stack</text>
+  <text x="1105" y="647" text-anchor="middle" class="mono">nav2_params.yaml · nav2_params_resto_arbi.yaml</text>
+  <g>
+    <rect x="858" y="662" width="120" height="34" rx="7" fill="#ffedd5"/>
+    <text x="918" y="684" text-anchor="middle" class="chip">BT Navigator</text>
+    <rect x="988" y="662" width="120" height="34" rx="7" fill="#ffedd5"/>
+    <text x="1048" y="684" text-anchor="middle" class="chip">Global Planner</text>
+    <rect x="1118" y="662" width="120" height="34" rx="7" fill="#ffedd5"/>
+    <text x="1178" y="684" text-anchor="middle" class="chip">Controller</text>
+    <rect x="1248" y="662" width="106" height="34" rx="7" fill="#ffedd5"/>
+    <text x="1301" y="684" text-anchor="middle" class="chip">Recoveries</text>
+    <rect x="858" y="704" width="496" height="34" rx="7" fill="#ffedd5"/>
+    <text x="1106" y="726" text-anchor="middle" class="chip">Global &amp; Local Costmaps  (fed by /map + /scan)</text>
+  </g>
+
+  <!-- ===================== LAYER 3 <-> 4 ===================== -->
+  <line x1="205" y1="898" x2="205" y2="742" class="edge" marker-end="url(#a)"/>
+  <text x="219" y="805" class="topic">/scan  /odom  /tf</text>
+
+  <line x1="960" y1="898" x2="960" y2="752" class="edge" marker-end="url(#a)"/>
+  <text x="946" y="798" text-anchor="end" class="topic">/scan  /odom</text>
+  <text x="946" y="816" text-anchor="end" class="topic">/tf  /clock</text>
+  <text x="946" y="834" text-anchor="end" font-size="11" fill="#64748b">▲ sensors</text>
+
+  <line x1="1250" y1="752" x2="1250" y2="896" class="edge" marker-end="url(#a)"/>
+  <text x="1264" y="806" class="topic">/cmd_vel</text>
+  <text x="1264" y="824" font-size="11" fill="#64748b">▼ velocity commands</text>
+
+  <!-- ===================== LAYER 4 ===================== -->
+  <rect x="90" y="900" width="1280" height="50" rx="10" fill="#e0f2fe" stroke="#0ea5e9" stroke-width="1.6"/>
+  <text x="730" y="922" text-anchor="middle" font-size="16" font-weight="700" fill="#0f172a">ros_gz_bridge  (parameter_bridge)</text>
+  <text x="730" y="940" text-anchor="middle" class="sub">ROS 2 messages  ⇄  Gazebo transport  ·  /clock  /cmd_vel  /odom  /scan  /tf</text>
+
+  <line x1="400" y1="952" x2="400" y2="978" class="edge" marker-start="url(#a)" marker-end="url(#a)"/>
+  <line x1="730" y1="952" x2="730" y2="978" class="edge" marker-start="url(#a)" marker-end="url(#a)"/>
+
+  <rect x="90" y="980" width="1280" height="96" rx="10" class="box" stroke="#0ea5e9"/>
+  <text x="110" y="1004" font-size="14" font-weight="700" fill="#0369a1">Gazebo Sim</text>
+  <g>
+    <rect x="110" y="1014" width="400" height="50" rx="8" fill="#e0f2fe"/>
+    <text x="310" y="1034" text-anchor="middle" class="chip" font-weight="700">Restaurant Worlds</text>
+    <text x="310" y="1052" text-anchor="middle" class="mono">restaurant.world (24) · resto_arbi.world (10)</text>
+    <rect x="530" y="1014" width="400" height="50" rx="8" fill="#e0f2fe"/>
+    <text x="730" y="1034" text-anchor="middle" class="chip" font-weight="700">BellaBot Robot Model</text>
+    <text x="730" y="1052" text-anchor="middle" class="chip">differential drive · 2D LiDAR · wheel odometry</text>
+    <rect x="950" y="1014" width="400" height="50" rx="8" fill="#e0f2fe"/>
+    <text x="1150" y="1034" text-anchor="middle" class="chip" font-weight="700">robot_state_publisher</text>
+    <text x="1150" y="1052" text-anchor="middle" class="mono">cstam_robot.urdf.xacro → /tf</text>
+  </g>
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <rect x="1440" y="100" width="320" height="120" rx="14" fill="#faf5ff" stroke="#e9d5ff"/>
+  <text x="1460" y="126" class="band-label" fill="#7e22ce">VISUALIZATION</text>
+  <text x="1460" y="156" class="title">RViz2</text>
+  <text x="1460" y="178" class="mono">cstam_nav2.rviz · slam_demo.rviz</text>
+  <text x="1460" y="200" class="sub">map, LiDAR scan, planned path, pose</text>
+
+  <rect x="1440" y="300" width="320" height="470" rx="14" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="1460" y="326" class="band-label" fill="#334155">LAUNCH &amp; ENTRY POINTS</text>
+
+  <rect x="1460" y="344" width="280" height="44" rx="8" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="1600" y="371" text-anchor="middle" class="mono" font-weight="700">run_autonomous_system.sh</text>
+  <line x1="1600" y1="388" x2="1600" y2="414" class="edge" marker-end="url(#a)"/>
+  <rect x="1460" y="416" width="280" height="44" rx="8" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="1600" y="443" text-anchor="middle" class="mono" font-weight="700">cstam_system.launch.py</text>
+  <text x="1474" y="486" class="sub">includes:</text>
+  <text x="1490" y="508" class="mono">• spawn_cstam_robot.launch.py  ④</text>
+  <text x="1490" y="528" class="mono">• navigation.launch.py         ③</text>
+  <text x="1490" y="548" class="mono">• task manager + docking       ②</text>
+  <text x="1490" y="568" class="mono">• rviz2</text>
+
+  <rect x="1460" y="592" width="280" height="34" rx="8" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="1600" y="614" text-anchor="middle" class="mono">run_delivery_simulator.sh   ①</text>
+  <rect x="1460" y="636" width="280" height="34" rx="8" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="1600" y="658" text-anchor="middle" class="mono">run_mapping_demo.sh  (SLAM)</text>
+  <rect x="1460" y="680" width="280" height="34" rx="8" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="1600" y="702" text-anchor="middle" class="mono">run_demo.py · test_system.py</text>
+  <text x="1600" y="744" text-anchor="middle" font-size="11" fill="#64748b">offline demo &amp; logic tests (no ROS needed)</text>
+
+  <rect x="1440" y="850" width="320" height="240" rx="14" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="1460" y="876" class="band-label" fill="#334155">CONFIGURATION &amp; ASSETS</text>
+  <text x="1460" y="906" class="mono">waypoints*.yaml</text>
+  <text x="1460" y="922" class="sub">table &amp; dock poses  → ②</text>
+  <text x="1460" y="950" class="mono">nav2_params*.yaml · slam_params</text>
+  <text x="1460" y="966" class="sub">planner / controller / AMCL  → ③</text>
+  <text x="1460" y="994" class="mono">maps/*.pgm + *.yaml</text>
+  <text x="1460" y="1010" class="sub">occupancy grids  → ③</text>
+  <text x="1460" y="1038" class="mono">worlds/ · models/ · urdf/</text>
+  <text x="1460" y="1054" class="sub">environments, BellaBot meshes  → ④</text>
+
+  <!-- ===================== LEGEND ===================== -->
+  <g transform="translate(60,1130)">
+    <line x1="0" y1="0" x2="40" y2="0" class="edge" marker-end="url(#a)"/>
+    <text x="50" y="5" class="sub">ROS 2 topic (pub → sub)</text>
+    <line x1="240" y1="0" x2="280" y2="0" class="action" marker-start="url(#ao)" marker-end="url(#ao)"/>
+    <text x="292" y="5" class="sub">ROS 2 action (goal / feedback / result)</text>
+    <line x1="560" y1="0" x2="600" y2="0" class="dashed" marker-end="url(#ag)"/>
+    <text x="610" y="5" class="sub">offline / mapping-mode flow</text>
+    <rect x="820" y="-10" width="30" height="20" rx="4" fill="#ffffff" stroke="#94a3b8" stroke-dasharray="5 4"/>
+    <text x="860" y="5" class="sub">optional component</text>
+  </g>
+</svg>
